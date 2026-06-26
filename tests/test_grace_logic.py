@@ -31,7 +31,7 @@ def check(name, got, want):
     print(f"  ok: {name}")
 
 
-def main():
+def test_decide_grace_action():
     # Under the limit: episode resets regardless of other state.
     check("under limit -> reset", decide(should_lock=False), RESET)
     check("under limit while locked -> reset",
@@ -78,4 +78,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    test_decide_grace_action()
