@@ -16,6 +16,12 @@ import json
 import logging
 from pathlib import Path
 
+# Sibling module (the scheduled task runs with cwd = this src/ directory).
+from grace_logic import (
+    decide_grace_action,
+    RESET, NONE, LOCK_NOW, GRANT_SESSION, RELOCK,
+)
+
 # ============================================
 # CONFIGURATION
 # ============================================
@@ -31,6 +37,12 @@ EXEMPT_USERS = []
 # If both lists are empty, ALL users will be monitored
 # If MONITORED_USERS has entries, ONLY those users are monitored
 # If EXEMPT_USERS has entries, everyone EXCEPT those users is monitored
+
+# Seconds the kid is given, ONCE PER DAY, to log back in and save their work
+# after the PC locks for reaching a limit. The initial lock is unchanged; this
+# only affects the one allowed save login afterwards. Set to 0 to disable it
+# (every re-login then locks immediately).
+GRACE_PERIOD_SECONDS = 60
 
 # ============================================
 
@@ -73,6 +85,12 @@ class PCTimeControl:
         # mutates while the monitor thread reads it (avoids locking against a
         # half-applied limit change).
         self.state_lock = threading.RLock()
+
+        # Once-per-day "save your work" session that follows the initial lock.
+        self.grace_period_seconds = GRACE_PERIOD_SECONDS
+        self.over_limit_locked = False  # have we already locked this over-limit episode?
+        self.grace_deadline = None      # datetime the active save session ends, or None
+        self.grace_used_date = None     # date the save session was consumed (per-day guard)
 
         # Log which user we're running as
         if self.should_monitor_user():
@@ -131,6 +149,13 @@ class PCTimeControl:
                     else:
                         self.start_time = saved_start_time
 
+                # Restore the once-per-day save-session guard, but only if it's
+                # from today; a stale date means a new day, so grant a fresh one.
+                if state.get('grace_used_date'):
+                    saved_grace_date = datetime.fromisoformat(state['grace_used_date']).date()
+                    if saved_grace_date >= datetime.now().date():
+                        self.grace_used_date = saved_grace_date
+
                 self.logger.info(f"State loaded: {len(self.lock_times)} lock times, usage limit: {self.usage_limit}")
                 print(f"[{datetime.now():%H:%M:%S}] Loaded previous settings from {self.state_file}")
         except Exception as e:
@@ -144,7 +169,10 @@ class PCTimeControl:
                 'lock_times': [f"{lt.hour}:{lt.minute}" for lt in self.lock_times],
                 'usage_limit': self.usage_limit,
                 'start_time': self.start_time.isoformat(),
-                'current_user': self.current_user
+                'current_user': self.current_user,
+                # Persist so restarting the agent can't hand out a second save
+                # session the same day.
+                'grace_used_date': self.grace_used_date.isoformat() if self.grace_used_date else None
             }
 
             with open(self.state_file, 'w') as f:
@@ -181,6 +209,9 @@ class PCTimeControl:
             # Detect unlock
             if self.is_locked and not actual_locked:
                 self.is_locked = False
+                # Deliberately leave over_limit_locked/grace_deadline untouched:
+                # this unlock may be the kid's one allowed save login, and enforce()
+                # needs that state to grant the session (or re-lock) correctly.
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] PC has been unlocked (detected by activity)")
 
             # Detect manual lock (not by our script)
@@ -344,14 +375,62 @@ class PCTimeControl:
 
         return False, ""
 
+    def enforce(self, should_lock, reason):
+        """Apply one enforcement tick, including the once-per-day save session.
+
+        The initial lock is immediate (unchanged). Afterwards the kid may log
+        back in ONCE per day for `grace_period_seconds` to save their work; then
+        the PC re-locks and any further re-login that day locks immediately. See
+        grace_logic.decide_grace_action for the pure decision and
+        docs/add-grace-period.md for the rationale.
+        """
+        now = datetime.now()
+
+        # Snapshot state and update it under the lock; do the slow side effects
+        # (LockWorkStation, Tk message box, save_state) outside the lock so we
+        # don't block the server thread.
+        with self.state_lock:
+            action = decide_grace_action(
+                now, should_lock, self.is_locked, self.over_limit_locked,
+                self.grace_deadline, self.grace_used_date, self.grace_period_seconds,
+            )
+            if action == RESET:
+                self.over_limit_locked = False
+                self.grace_deadline = None
+            elif action == GRANT_SESSION:
+                self.grace_deadline = now + timedelta(seconds=self.grace_period_seconds)
+                self.grace_used_date = now.date()
+                self.over_limit_locked = True
+            elif action in (LOCK_NOW, RELOCK):
+                self.over_limit_locked = True
+                self.grace_deadline = None
+
+        if action == LOCK_NOW:
+            print(f"Locking PC: {reason}")
+            self.lock_pc()
+        elif action == RELOCK:
+            print(f"[{now:%H:%M:%S}] Re-locking PC: save time is up")
+            self.lock_pc()
+        elif action == GRANT_SESSION:
+            self.save_state()  # persist grace_used_date so a restart can't reset it
+            secs = self.grace_period_seconds
+            window = f"{secs // 60} minute(s)" if secs >= 60 and secs % 60 == 0 else f"{secs} seconds"
+            self.show_message(
+                f"⚠️ You're out of time. Save your work now — the PC will lock in "
+                f"{window}. This is your one save chance today.",
+                "Save now",
+            )
+            self.logger.info("Granted the one-per-day save session")
+            print(f"[{now:%H:%M:%S}] Granted one-per-day save session ({self.grace_period_seconds}s)")
+
     def run_monitor(self):
         """Main monitoring loop: enforces limits for the whole session.
 
         Runs forever — it must NOT exit after the first lock, otherwise the kid
         could unlock the screen and use the PC unrestricted for the rest of the
-        day. Locking only happens on the unlocked->over-limit transition so we
-        don't re-issue LockWorkStation every second while already at the lock
-        screen; monitor_activity clears is_locked when the screen is unlocked,
+        day. Each tick delegates to enforce(), which locks on the
+        unlocked->over-limit transition and grants the once-per-day save
+        session; monitor_activity clears is_locked when the screen is unlocked,
         which re-arms enforcement if the limit is still exceeded.
         """
         print("PC Time Control is running...")
@@ -360,11 +439,9 @@ class PCTimeControl:
                 # Check and send warnings if approaching time limit
                 self.check_and_send_warnings()
 
-                # Check if time limit reached
+                # Check if time limit reached, then decide what to do about it.
                 should_lock, reason = self.check_time_limits()
-                if should_lock and not self.is_locked:
-                    print(f"Locking PC: {reason}")
-                    self.lock_pc()
+                self.enforce(should_lock, reason)
             except Exception as e:
                 # Never let a transient error kill the enforcement loop.
                 self.logger.error(f"Error in monitor loop: {e}")
