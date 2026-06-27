@@ -215,7 +215,7 @@ Each kid PC also serves a small **read-only** web page so the kid can see how mu
 - It is **read-only**: it cannot set, clear, or extend limits, lock the PC, or run any command. All control still happens from the parent web panel.
 - Exempt users (parents) see "No time limit right now".
 
-**Endpoints** (served by the agent, `src/pc_control.py`):
+**Endpoints** (served by the agent; implemented in `src/kid_status_page.py`):
 - `GET /` — the status page (HTML)
 - `GET /api/status` — the same data as JSON
 
