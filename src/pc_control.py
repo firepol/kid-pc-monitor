@@ -29,6 +29,7 @@ from grace_logic import (
 
 from config import AGENT_PORT, KID_PAGE_PORT
 from kid_status_page import KidStatusServer
+from usage_logic import usage_minutes
 
 # ============================================
 # CONFIGURATION
@@ -107,6 +108,13 @@ class PCTimeControl:
 
         self.last_remaining = None  # Previous remaining minutes, for crossing detection
 
+        # Time spent locked does NOT count toward the usage limit. We track the
+        # total locked duration of the current usage period and subtract it from
+        # the elapsed wall-clock. Keyed on the ACTUAL screen-lock state so it
+        # covers both our own locks and the kid locking manually.
+        self.locked_accumulated = timedelta(0)  # banked locked time this period
+        self.lock_started_at = None             # start of an in-progress lock, or None
+
         # Log which user we're running as
         if self.should_monitor_user():
             self.logger.info(f"Monitoring enabled for user: {self.current_user}")
@@ -163,6 +171,9 @@ class PCTimeControl:
                         print(f"[{datetime.now():%H:%M:%S}] Usage timer reset for new day")
                     else:
                         self.start_time = saved_start_time
+                        # Same day: keep the locked time already excluded so far.
+                        if 'locked_accumulated' in state:
+                            self.locked_accumulated = timedelta(seconds=state['locked_accumulated'])
 
                 # Restore the once-per-day save-session guard, but only if it's
                 # from today; a stale date means a new day, so grant a fresh one.
@@ -185,6 +196,9 @@ class PCTimeControl:
                 'usage_limit': self.usage_limit,
                 'start_time': self.start_time.isoformat(),
                 'current_user': self.current_user,
+                # Persist so a same-day restart keeps excluding time already spent
+                # locked (paired with start_time).
+                'locked_accumulated': self.locked_accumulated.total_seconds(),
                 # Persist so restarting the agent can't hand out a second save
                 # session the same day.
                 'grace_used_date': self.grace_used_date.isoformat() if self.grace_used_date else None
@@ -221,6 +235,16 @@ class PCTimeControl:
         while True:
             actual_locked = self.check_if_locked()
 
+            # Track locked time so it can be excluded from the usage limit.
+            # Keyed on the real lock state (not self.is_locked, which we also set
+            # ourselves in lock_pc), so a manual lock is counted too.
+            with self.state_lock:
+                if actual_locked and self.lock_started_at is None:
+                    self.lock_started_at = datetime.now()
+                elif not actual_locked and self.lock_started_at is not None:
+                    self.locked_accumulated += datetime.now() - self.lock_started_at
+                    self.lock_started_at = None
+
             # Detect unlock
             if self.is_locked and not actual_locked:
                 self.is_locked = False
@@ -242,6 +266,18 @@ class PCTimeControl:
     def set_usage_limit(self, minutes):
         """Set maximum usage time in minutes"""
         self.usage_limit = minutes
+
+    def reset_usage_clock(self):
+        """Start the usage period fresh from now (e.g. when the limit is (re)set).
+
+        Clears banked locked time too. If we're mid-lock, restart that lock's
+        measurement from now so the usage can't briefly go negative. Call while
+        holding state_lock.
+        """
+        self.start_time = datetime.now()
+        self.locked_accumulated = timedelta(0)
+        if self.lock_started_at is not None:
+            self.lock_started_at = self.start_time
 
     def show_message(self, message, title="PC Time Control"):
         """Display a message using tkinter"""
@@ -305,6 +341,8 @@ class PCTimeControl:
             lock_times = list(self.lock_times)
             usage_limit = self.usage_limit
             start_time = self.start_time
+            locked_accumulated = self.locked_accumulated
+            lock_started_at = self.lock_started_at
 
         # Check scheduled lock times
         for lock_time in lock_times:
@@ -324,8 +362,9 @@ class PCTimeControl:
         # Check usage limit. Use `is not None` so a limit of 0 (lock immediately)
         # is honoured rather than treated as "no limit" by a falsy check.
         if usage_limit is not None:
-            usage_minutes = (current_time - start_time).total_seconds() / 60
-            minutes_until_limit = usage_limit - usage_minutes
+            # Locked time doesn't count — usage_minutes subtracts it.
+            used = usage_minutes(current_time, start_time, locked_accumulated, lock_started_at)
+            minutes_until_limit = usage_limit - used
 
             if min_remaining is None or minutes_until_limit < min_remaining:
                 min_remaining = minutes_until_limit
@@ -393,6 +432,8 @@ class PCTimeControl:
             lock_times = list(self.lock_times)
             usage_limit = self.usage_limit
             start_time = self.start_time
+            locked_accumulated = self.locked_accumulated
+            lock_started_at = self.lock_started_at
 
         # Check scheduled lock times. Match the whole target minute, not just
         # its first second: the monitor loop does work + sleep(1) each pass and
@@ -405,8 +446,9 @@ class PCTimeControl:
         # Check usage limit. Use `is not None` so a limit of 0 (lock immediately)
         # is honoured rather than treated as "no limit" by a falsy check.
         if usage_limit is not None:
-            usage_minutes = (current_time - start_time).total_seconds() / 60
-            if usage_minutes >= usage_limit:
+            # Locked time doesn't count — usage_minutes subtracts it.
+            used = usage_minutes(current_time, start_time, locked_accumulated, lock_started_at)
+            if used >= usage_limit:
                 return True, f"Usage limit of {usage_limit} minutes reached"
 
         return False, ""
@@ -635,7 +677,7 @@ class RemoteControlServer:
                     # thread never sees the new limit against the old start_time.
                     with self.pc_control.state_lock:
                         self.pc_control.set_usage_limit(minutes)
-                        self.pc_control.start_time = datetime.now()  # Reset start time when setting new limit
+                        self.pc_control.reset_usage_clock()  # Fresh start_time, clear banked locked time
                         self.pc_control.warnings_sent.clear()  # Clear warnings for new limit
                         self.pc_control.last_remaining = None  # Re-arm crossing detection
                     self.pc_control.save_state()  # Save state after setting limit

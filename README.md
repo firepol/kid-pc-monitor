@@ -349,6 +349,7 @@ The platform-independent logic has unit tests under `tests/`. They use only the 
 python tests/test_grace_logic.py
 python tests/test_warning_logic.py
 python tests/test_config.py
+python tests/test_usage_logic.py
 ```
 
 Each test file is runnable on its own and prints a line per case (and exits non-zero on failure). If you prefer, you can also run them with pytest:
