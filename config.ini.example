@@ -5,20 +5,61 @@
 #
 # config.ini is gitignored (it is per-machine). Any value you omit — or this
 # whole file — falls back to the built-in defaults shown below, so it is
-# entirely optional. The kid-PC installer (scripts/install.py) can also create
-# config.ini for you when you choose a non-default port.
+# entirely optional. The installers can also create it for you.
 
-[ports]
-# Port the monitoring agent (pc_control.py) listens on, on each kid PC. The
-# parent web panel connects to this port, and the installer opens it in the
-# Windows Firewall. If you change it, set the SAME value in the parent PC's
-# config.ini so the panel can still reach the kid PC. Default: 9999
-agent = 9999
+[web]
+# Port the agent's web UI listens on, on each kid PC. Open this in a browser
+# from any device on your network: http://<kid-pc-ip>:<port>
+# The kid sees a read-only "time left" page; the parent logs in at /admin.
+# Default: 9999
+port = 9999
 
-# Port the parent web panel (web_panel.py) serves on. Open this in your
-# browser/phone. Default: 5000
-web_panel = 5000
+# Admin login. Set the password hash with scripts/set_password.py (it never
+# stores the plain password). Until a password is set, the /admin login is
+# disabled. Default username: parent
+username = parent
+# password_hash =   # set via: python scripts/set_password.py
 
-# Port for the read-only kid status page on each kid PC. Set to "none" (or
-# leave blank) to disable the page entirely. Default: 8080
-kid_status_page = 8080
+[limits]
+# Daily allowance in minutes. "default" applies to any day not listed below;
+# add per-weekday lines to give different days different allowances. The chosen
+# allowance auto-applies each day and the usage clock resets; the parent can
+# still override it for the current day from the admin page.
+default = 120
+# monday    = 90
+# tuesday   = 90
+# wednesday = 90
+# thursday  = 90
+# friday    = 120
+saturday  = 240
+sunday    = 240
+
+[notifications]
+# Warn the kid as time runs low. Instead of a mandatory popup, play a sound at
+# each of these minutes-remaining marks. Set sound_file to a .wav to customise
+# (empty = a default system beep). popup_enabled also shows an on-screen popup.
+sound_enabled = true
+# sound_file  = C:\sounds\warning.wav      # Windows
+# sound_file  = /home/kid/warning.wav      # Linux
+thresholds = 15,5,2,1
+popup_enabled = false
+
+[monitoring]
+# Restrict who is monitored by OS username. Leave both empty to monitor every
+# user. monitored_users = only these are restricted. exempt_users = everyone
+# except these (use for parent/admin accounts on a shared PC).
+# monitored_users = Tommy, Sara
+# exempt_users    = Dad, Mom
+# Once-per-day "save your work" window (seconds) granted after the first lock.
+grace_period_seconds = 60
+
+[activity]
+# Log which program is in the foreground, for the usage history on the admin
+# page. Sampled every interval_seconds. Set enabled = false to turn it off.
+enabled = true
+interval_seconds = 15
+
+[storage]
+# SQLite database file (history, activity, live state). Relative paths are
+# resolved against the repo root. Default: kidmon.db
+db_path = kidmon.db

@@ -11,9 +11,9 @@ import os
 import sys
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from usage_logic import usage_minutes, locked_delta  # noqa: E402
+from kidmon.usage_logic import usage_minutes, locked_delta  # noqa: E402
 
 START = datetime(2026, 6, 27, 10, 0, 0)
 

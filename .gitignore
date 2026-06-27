@@ -13,7 +13,6 @@ ENV/
 # Flask
 instance/
 .webassets-cache
-templates/
 
 # IDE
 .vscode/
@@ -27,6 +26,7 @@ Thumbs.db
 
 # App specific
 pc_control_state.json
+*.db
 *.log
 config_local.py
 config.ini

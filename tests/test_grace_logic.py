@@ -7,9 +7,9 @@ import os
 import sys
 from datetime import datetime, timedelta
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from grace_logic import (  # noqa: E402
+from kidmon.grace_logic import (  # noqa: E402
     decide_grace_action,
     RESET, NONE, LOCK_NOW, GRANT_SESSION, RELOCK,
 )

@@ -1,2 +1,2 @@
-flask>=2.0.0
-pywin32>=300; sys_platform == 'win32'  # Windows agent / future Windows APIs (skipped on Linux/macOS)
+flask>=2.0.0            # web UI (kid status + admin); pulls in werkzeug for password hashing
+psutil>=5.9.0          # optional: nicer foreground-process names for activity logging

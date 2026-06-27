@@ -1,17 +1,16 @@
-"""Unit tests for the shared port configuration (src/config.py).
+"""Unit tests for the configuration loader (kidmon/config.py).
 
 Pure and dependency-free: run with `python tests/test_config.py` (or via
-pytest). No tkinter / Flask / Windows needed. Each test points
-config.CONFIG_PATH at a throwaway temp file, so the real repo config.ini is
-never read or written.
+pytest). Each test points config.CONFIG_PATH at a throwaway temp file, so the
+real repo config.ini is never read or written.
 """
 import os
 import sys
 import tempfile
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import config  # noqa: E402
+from kidmon import config  # noqa: E402
 
 
 def check(name, got, want):
@@ -20,10 +19,7 @@ def check(name, got, want):
 
 
 def _with_ini(contents):
-    """Point config at a fresh temp config.ini; None means 'no file'.
-
-    Returns the temp directory (caller keeps it alive until done).
-    """
+    """Point config at a fresh temp config.ini; None means 'no file'."""
     tmp = tempfile.TemporaryDirectory()
     path = os.path.join(tmp.name, "config.ini")
     if contents is not None:
@@ -35,73 +31,69 @@ def _with_ini(contents):
 
 def test_defaults_when_no_file():
     with _with_ini(None):
-        check("no file -> defaults", config.get_ports(),
-              {"agent": 9999, "web_panel": 5000, "kid_status_page": 8080})
+        check("default web port", config.get_web_port(), 9999)
+        check("default daily limit", config.get_default_limit(), 120)
+        check("no weekday overrides", config.get_weekday_limits(), {})
+        user, pw = config.get_admin_credentials()
+        check("default admin user", user, "parent")
+        check("no password by default", pw, "")
 
 
-def test_override_from_ini():
-    with _with_ini("[ports]\nagent = 12345\nweb_panel = 5050\n"):
-        ports = config.get_ports()
-        check("agent overridden", ports["agent"], 12345)
-        check("web_panel overridden", ports["web_panel"], 5050)
-        check("kid_status_page default kept", ports["kid_status_page"], 8080)
+def test_web_overrides():
+    with _with_ini("[web]\nport = 8000\nusername = mum\npassword_hash = abc123\n"):
+        check("web port overridden", config.get_web_port(), 8000)
+        user, pw = config.get_admin_credentials()
+        check("username overridden", user, "mum")
+        check("password hash read", pw, "abc123")
 
 
-def test_kid_page_disabled_values():
-    for raw in ("none", "off", "disabled", "0", ""):
-        with _with_ini(f"[ports]\nkid_status_page = {raw}\n"):
-            check(f"kid_status_page='{raw}' -> None",
-                  config.get_ports()["kid_status_page"], None)
+def test_per_weekday_limits():
+    ini = "[limits]\ndefault = 90\nsaturday = 240\nsunday = 180\n"
+    with _with_ini(ini):
+        check("default kept", config.get_default_limit(), 90)
+        check("weekday overrides parsed",
+              config.get_weekday_limits(), {"saturday": 240, "sunday": 180})
 
 
-def test_malformed_value_falls_back():
-    with _with_ini("[ports]\nagent = not_a_number\nweb_panel = 6000\n"):
-        ports = config.get_ports()
-        check("malformed agent -> default", ports["agent"], 9999)
-        check("valid web_panel still applied", ports["web_panel"], 6000)
+def test_malformed_limit_falls_back():
+    with _with_ini("[limits]\ndefault = lots\nfriday = 60\n"):
+        check("malformed default -> built-in", config.get_default_limit(), 120)
+        check("valid weekday still applied",
+              config.get_weekday_limits(), {"friday": 60})
 
 
-def test_missing_section_uses_defaults():
-    with _with_ini("[something_else]\nfoo = bar\n"):
-        check("no [ports] section -> defaults", config.get_ports(),
-              {"agent": 9999, "web_panel": 5000, "kid_status_page": 8080})
+def test_notification_thresholds_sorted_desc():
+    with _with_ini("[notifications]\nthresholds = 1, 10, 5\nsound_enabled = no\n"):
+        n = config.get_notification_settings()
+        check("thresholds sorted desc", n["thresholds"], [10, 5, 1])
+        check("sound disabled", n["sound_enabled"], False)
 
 
-def test_write_ports_creates_and_merges():
-    with _with_ini(None):
-        path = config.write_ports(agent=22222)
-        check("file created", os.path.exists(path), True)
-        ports = config.get_ports()
-        check("written agent applied", ports["agent"], 22222)
-        check("others preserved as defaults", ports["web_panel"], 5000)
+def test_monitoring_csv_parsing():
+    ini = "[monitoring]\nmonitored_users = Tommy, Sara\nexempt_users = Dad\n"
+    with _with_ini(ini):
+        m = config.get_monitoring_settings()
+        check("monitored parsed", m["monitored_users"], ["Tommy", "Sara"])
+        check("exempt parsed", m["exempt_users"], ["Dad"])
+        check("grace default", m["grace_period_seconds"], 60)
 
 
-def test_write_ports_roundtrips_disable():
-    with _with_ini(None):
-        config.write_ports(kid_status_page=None)
-        check("None written as disabled", config.get_ports()["kid_status_page"], None)
-
-
-def test_write_ports_rejects_unknown_key():
-    with _with_ini(None):
-        try:
-            config.write_ports(bogus=1)
-        except KeyError:
-            print("  ok: unknown key rejected")
-        else:
-            raise AssertionError("expected KeyError for unknown port key")
+def test_db_path_relative_resolves_to_repo_root():
+    with _with_ini("[storage]\ndb_path = data/k.db\n"):
+        path = config.get_db_path()
+        check("relative db path is absolute", os.path.isabs(path), True)
+        check("relative db path ends right", path.endswith(os.path.join("data", "k.db")), True)
 
 
 def main():
     tests = [
         test_defaults_when_no_file,
-        test_override_from_ini,
-        test_kid_page_disabled_values,
-        test_malformed_value_falls_back,
-        test_missing_section_uses_defaults,
-        test_write_ports_creates_and_merges,
-        test_write_ports_roundtrips_disable,
-        test_write_ports_rejects_unknown_key,
+        test_web_overrides,
+        test_per_weekday_limits,
+        test_malformed_limit_falls_back,
+        test_notification_thresholds_sorted_desc,
+        test_monitoring_csv_parsing,
+        test_db_path_relative_resolves_to_repo_root,
     ]
     original = config.CONFIG_PATH
     try:
