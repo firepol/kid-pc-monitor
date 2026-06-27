@@ -11,9 +11,13 @@ import threading
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from config import DEFAULTS
+
 # Default port for the read-only kid status page. Reachable on the local
-# network so the kid can also open it from, e.g., their phone.
-DEFAULT_KID_PAGE_PORT = 8080
+# network so the kid can also open it from, e.g., their phone. The configured
+# value (config.ini) is resolved in pc_control.py and passed to KidStatusServer;
+# this is only the fallback for using this module standalone.
+DEFAULT_KID_PAGE_PORT = DEFAULTS["kid_status_page"]
 
 KID_PAGE_HTML = """<!DOCTYPE html>
 <html lang="en">

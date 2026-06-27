@@ -1,0 +1,24 @@
+# Kid PC Monitor — local configuration
+#
+# Copy this file to "config.ini" and edit as needed:
+#     cp config.ini.example config.ini
+#
+# config.ini is gitignored (it is per-machine). Any value you omit — or this
+# whole file — falls back to the built-in defaults shown below, so it is
+# entirely optional. The kid-PC installer (scripts/install.py) can also create
+# config.ini for you when you choose a non-default port.
+
+[ports]
+# Port the monitoring agent (pc_control.py) listens on, on each kid PC. The
+# parent web panel connects to this port, and the installer opens it in the
+# Windows Firewall. If you change it, set the SAME value in the parent PC's
+# config.ini so the panel can still reach the kid PC. Default: 9999
+agent = 9999
+
+# Port the parent web panel (web_panel.py) serves on. Open this in your
+# browser/phone. Default: 5000
+web_panel = 5000
+
+# Port for the read-only kid status page on each kid PC. Set to "none" (or
+# leave blank) to disable the page entirely. Default: 8080
+kid_status_page = 8080

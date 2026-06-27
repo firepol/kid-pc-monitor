@@ -219,9 +219,27 @@ Each kid PC also serves a small **read-only** web page so the kid can see how mu
 - `GET /` — the status page (HTML)
 - `GET /api/status` — the same data as JSON
 
-**Configuration / disabling:** the port is set by `KID_PAGE_PORT` near the top of `src/pc_control.py` (default `8080`). Set `KID_PAGE_PORT = None` to disable the page entirely. To reach it from another device, allow inbound **8080/tcp** on the kid PC's firewall.
+**Configuration / disabling:** the port is the `kid_status_page` value in `config.ini` (default `8080`) — see [Ports (config.ini)](#-ports-configini). Set it to `none` (or leave it blank) to disable the page entirely. To reach it from another device, allow inbound `<port>/tcp` on the kid PC's firewall.
 
 ## ⚙️ Configuration
+
+### 🔌 Ports (config.ini)
+All ports live in a single optional `config.ini` at the repo root, read by both the agent and the web panel via `src/config.py`. Copy the template and edit it:
+
+```bash
+cp config.ini.example config.ini
+```
+
+```ini
+[ports]
+agent = 9999            # agent (pc_control.py) on each kid PC
+web_panel = 5000        # parent web panel (web_panel.py)
+kid_status_page = 8080  # read-only kid status page; "none" to disable
+```
+
+- `config.ini` is **optional and gitignored** (per-machine). Any value you omit — or the whole file — falls back to the built-in defaults shown above.
+- The kid-PC installer (`python scripts/install.py`) asks which agent port to use (press Enter for `9999`) and writes `config.ini` for you, then opens that port in the Windows Firewall.
+- **Split deployment:** the agent runs on each kid PC and the web panel on the parent PC — different machines, each with their own `config.ini`. If you change `agent`, set the **same** value on both so the panel can still reach the kid PC.
 
 ### Custom PC Names
 Edit `src/web_panel.py`:

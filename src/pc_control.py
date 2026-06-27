@@ -16,6 +16,7 @@ import json
 import logging
 from pathlib import Path
 
+from config import AGENT_PORT, KID_PAGE_PORT
 from kid_status_page import KidStatusServer
 
 # ============================================
@@ -34,10 +35,10 @@ EXEMPT_USERS = []
 # If MONITORED_USERS has entries, ONLY those users are monitored
 # If EXEMPT_USERS has entries, everyone EXCEPT those users is monitored
 
-# Port for the read-only "kid" status page (a browser page on the kid's PC
-# showing how much time is left). Reachable on the local network so the kid
-# can also open it from, e.g., their phone. Set to None to disable.
-KID_PAGE_PORT = 8080
+# Ports (agent + read-only kid status page) are configured in config.ini at the
+# repo root and loaded via config.py — see AGENT_PORT / KID_PAGE_PORT imported
+# above. Edit config.ini (copied from config.ini.example) to change them; set
+# kid_status_page to "none" there to disable the status page.
 
 # ============================================
 
@@ -55,7 +56,7 @@ logging.basicConfig(
 
 # When launched via pythonw.exe (as the scheduled task does) there is no
 # console, so sys.stdout/sys.stderr are None and the first print() raises
-# AttributeError, killing the agent before the server can bind port 9999.
+# AttributeError, killing the agent before the server can bind the agent port.
 # Redirect them to a file so print() is safe and its output is captured.
 if sys.stdout is None or sys.stderr is None:
     _console_log = open('pc_control.out.log', 'a', buffering=1, encoding='utf-8')
@@ -345,12 +346,12 @@ class PCTimeControl:
 
 # Simple Remote Control Server
 class RemoteControlServer:
-    def __init__(self, port=9999, timeout=60):
+    def __init__(self, port=AGENT_PORT, timeout=60):
         """
         Initialize the remote control server.
-        
+
         Args:
-            port (int): Port number to listen on (default: 9999)
+            port (int): Port number to listen on (default: from config.ini)
             timeout (int): Socket timeout in seconds (default: 60)
         """
         self.port = port
@@ -605,9 +606,9 @@ if __name__ == "__main__":
         except socket.error:
             return False
     
-    if not check_port_availability(9999):
+    if not check_port_availability(AGENT_PORT):
         control.show_message(
-            f"Port 9999 is already in use or blocked!\n"
+            f"Port {AGENT_PORT} is already in use or blocked!\n"
             f"Check your firewall or other running applications.",
             "Network Error"
         )
