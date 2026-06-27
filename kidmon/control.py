@@ -63,6 +63,12 @@ class TimeControl:
 
         self.current_user = platform.current_user()
 
+        chat = config.get_chat_settings()
+        self.chat_enabled = chat["enabled"]
+        # Friendly display name for the kid (header + chat); falls back to the
+        # OS account name. The kid can't change it (it's server-side config).
+        self.kid_name = chat["kid_name"] or self.current_user
+
         # Live enforcement state (guarded by state_lock). The server/web threads
         # mutate limit/start_time/warnings while the monitor thread reads them.
         self.state_lock = threading.RLock()
@@ -279,9 +285,29 @@ class TimeControl:
         self.save_state()
 
     def send_message(self, body, sender="parent"):
-        """Show a message to the kid and store it (chat groundwork)."""
+        """Admin quick-popup: show a message on the kid's screen and store it."""
         self.platform.notify("Message from parent", body)
-        self.storage.add_message(datetime.now().isoformat(), sender, body)
+        self.storage.add_message(datetime.now().isoformat(), sender, body, "Parent")
+
+    def post_chat(self, body, is_parent, parent_name=None):
+        """Post a chat message. Role is decided by the caller from the session.
+
+        Parent messages also pop up on the kid's screen (popup only, no sound);
+        kid replies are stored only — the parent sees them on their own device.
+        Returns the stored message dict, or None for an empty body.
+        """
+        body = body.strip()[:500]
+        if not body:
+            return None
+        if is_parent:
+            sender, name = "parent", (parent_name or "Parent").strip()[:40] or "Parent"
+        else:
+            sender, name = "kid", self.kid_name
+        ts = datetime.now().isoformat()
+        self.storage.add_message(ts, sender, body, name)
+        if is_parent:
+            self.platform.notify(f"Message from {name}", body)
+        return {"ts": ts, "sender": sender, "name": name, "body": body}
 
     # --- remaining time + warnings ------------------------------------------
 
@@ -475,7 +501,7 @@ class TimeControl:
                 next_lock = f"{lt.hour:02d}:{lt.minute:02d}"
 
         return {
-            "user": self.current_user,
+            "user": self.kid_name,
             "monitored": monitored,
             "is_locked": self.is_locked,
             "time_remaining": int(remaining) if remaining is not None else None,

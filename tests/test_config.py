@@ -107,6 +107,17 @@ def test_monitoring_csv_parsing():
         check("grace default", m["grace_period_seconds"], 60)
 
 
+def test_chat_settings():
+    with _with_ini(None):
+        c = config.get_chat_settings()
+        check("chat enabled by default", c["enabled"], True)
+        check("kid_name empty by default", c["kid_name"], "")
+    with _with_ini("[chat]\nenabled = false\nkid_name = Tommy\n"):
+        c = config.get_chat_settings()
+        check("chat can be disabled", c["enabled"], False)
+        check("kid_name read", c["kid_name"], "Tommy")
+
+
 def test_db_path_relative_resolves_to_repo_root():
     with _with_ini("[storage]\ndb_path = data/k.db\n"):
         path = config.get_db_path()
@@ -124,6 +135,7 @@ def main():
         test_notification_named_sounds_mapping,
         test_notification_unknown_name_falls_back_to_default,
         test_monitoring_csv_parsing,
+        test_chat_settings,
         test_db_path_relative_resolves_to_repo_root,
     ]
     original = config.CONFIG_PATH

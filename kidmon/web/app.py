@@ -60,6 +60,36 @@ def create_app(control, config, storage):
     def api_status():
         return jsonify(control.status())
 
+    # --- chat (open page; role decided server-side from the session) ---------
+
+    # The display name is cosmetic and read from a cookie, but it is only
+    # trusted when the request carries a valid admin session — so a kid can't
+    # post as a parent (they have no signed session), only relabel nothing.
+    PARENT_NAME_COOKIE = "kidmon_parent_name"
+
+    @app.get("/api/chat")
+    def api_chat_get():
+        if not control.chat_enabled:
+            return jsonify(enabled=False, messages=[])
+        is_parent = bool(session.get("admin"))
+        parent_name = (request.cookies.get(PARENT_NAME_COOKIE, "Parent")
+                       if is_parent else None)
+        return jsonify(enabled=True, is_parent=is_parent,
+                       kid_name=control.kid_name, parent_name=parent_name,
+                       messages=storage.get_messages(50))
+
+    @app.post("/api/chat")
+    def api_chat_post():
+        if not control.chat_enabled:
+            return jsonify(ok=False, message="Chat disabled"), 403
+        body = ((request.json or {}).get("body") or "").strip()
+        if not body:
+            return jsonify(ok=False, message="Empty message"), 400
+        is_parent = bool(session.get("admin"))
+        parent_name = request.cookies.get(PARENT_NAME_COOKIE, "Parent")
+        msg = control.post_chat(body, is_parent, parent_name)
+        return jsonify(ok=True, message=msg)
+
     # --- auth ----------------------------------------------------------------
 
     @app.route("/admin", methods=["GET"])

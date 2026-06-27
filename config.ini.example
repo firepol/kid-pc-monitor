@@ -80,3 +80,11 @@ interval_seconds = 15
 # SQLite database file (history, activity, live state). Relative paths are
 # resolved against the repo root. Default: kidmon.db
 db_path = kidmon.db
+
+[chat]
+# A simple parent<->kid chat on the status page. The kid sees and replies on
+# their own status page; the parent (once logged in) chats from the same page on
+# their device and sets their display name there (so Mom and Dad can differ).
+enabled = true
+# Name shown for the kid in the header and chat. Defaults to the OS username.
+# kid_name = Tommy

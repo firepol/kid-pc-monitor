@@ -71,13 +71,33 @@ def test_activity_summary_groups_by_process():
     tmp.cleanup()
 
 
-def test_messages_roundtrip_chronological():
+def test_messages_roundtrip_chronological_with_names():
     s, tmp = _store()
-    s.add_message("2026-06-27T10:00:00", "parent", "dinner in 5")
-    s.add_message("2026-06-27T10:01:00", "kid", "ok!")
+    s.add_message("2026-06-27T10:00:00", "parent", "dinner in 5", "Mom")
+    s.add_message("2026-06-27T10:01:00", "kid", "ok!", "Tommy")
     msgs = s.get_messages()
     check("two messages", len(msgs), 2)
     check("chronological order", [m["body"] for m in msgs], ["dinner in 5", "ok!"])
+    check("names stored", [m["name"] for m in msgs], ["Mom", "Tommy"])
+    check("ids present and increasing", msgs[0]["id"] < msgs[1]["id"], True)
+    s.close()
+    tmp.cleanup()
+
+
+def test_messages_pruned_to_retention():
+    from kidmon import storage as storage_mod
+    s, tmp = _store()
+    original = storage_mod._MESSAGE_RETENTION
+    storage_mod._MESSAGE_RETENTION = 5
+    try:
+        for i in range(12):
+            s.add_message(f"2026-06-27T10:00:{i:02d}", "kid", f"m{i}", "Tommy")
+        msgs = s.get_messages(limit=100)
+        check("kept only retention count", len(msgs), 5)
+        check("kept the newest", [m["body"] for m in msgs],
+              ["m7", "m8", "m9", "m10", "m11"])
+    finally:
+        storage_mod._MESSAGE_RETENTION = original
     s.close()
     tmp.cleanup()
 
@@ -88,7 +108,8 @@ def main():
         test_state_many_atomic,
         test_daily_usage_upsert_and_history,
         test_activity_summary_groups_by_process,
-        test_messages_roundtrip_chronological,
+        test_messages_roundtrip_chronological_with_names,
+        test_messages_pruned_to_retention,
     ]:
         print(t.__name__)
         t()

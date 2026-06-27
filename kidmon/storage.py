@@ -45,10 +45,15 @@ CREATE TABLE IF NOT EXISTS messages (
     id     INTEGER PRIMARY KEY AUTOINCREMENT,
     ts     TEXT NOT NULL,
     sender TEXT NOT NULL,             -- 'parent' or 'kid'
+    name   TEXT,                      -- display name (e.g. 'Mom', 'Tommy')
     body   TEXT NOT NULL,
     seen   INTEGER NOT NULL DEFAULT 0
 );
 """
+
+# Keep at most this many chat messages; older ones are pruned on insert so the
+# database can't grow without bound over a long deployment.
+_MESSAGE_RETENTION = 1000
 
 
 class Storage:
@@ -59,7 +64,15 @@ class Storage:
         self._conn.row_factory = sqlite3.Row
         with self._lock:
             self._conn.executescript(_SCHEMA)
+            self._migrate()
             self._conn.commit()
+
+    def _migrate(self):
+        """Apply small in-place schema upgrades for databases created earlier."""
+        cols = {r["name"] for r in
+                self._conn.execute("PRAGMA table_info(messages)").fetchall()}
+        if "name" not in cols:
+            self._conn.execute("ALTER TABLE messages ADD COLUMN name TEXT")
 
     def close(self):
         with self._lock:
@@ -139,16 +152,21 @@ class Storage:
 
     # --- messages (chat groundwork) -----------------------------------------
 
-    def add_message(self, ts, sender, body):
+    def add_message(self, ts, sender, body, name=None):
         with self._lock:
             self._conn.execute(
-                "INSERT INTO messages(ts, sender, body) VALUES(?, ?, ?)",
-                (ts, sender, body))
+                "INSERT INTO messages(ts, sender, name, body) VALUES(?, ?, ?, ?)",
+                (ts, sender, name, body))
+            # Prune oldest beyond the retention cap.
+            self._conn.execute(
+                "DELETE FROM messages WHERE id NOT IN "
+                "(SELECT id FROM messages ORDER BY id DESC LIMIT ?)",
+                (_MESSAGE_RETENTION,))
             self._conn.commit()
 
     def get_messages(self, limit=50):
         with self._lock:
             rows = self._conn.execute(
-                "SELECT id, ts, sender, body, seen FROM messages "
+                "SELECT id, ts, sender, name, body, seen FROM messages "
                 "ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
         return [dict(r) for r in reversed(rows)]

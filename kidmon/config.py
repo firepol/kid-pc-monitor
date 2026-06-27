@@ -68,6 +68,10 @@ DEFAULTS = {
     "storage": {
         "db_path": "kidmon.db",           # relative to the repo root
     },
+    "chat": {
+        "enabled": True,
+        "kid_name": "",                   # display name; empty => OS username
+    },
 }
 
 _TRUE_VALUES = {"1", "true", "yes", "on"}
@@ -277,3 +281,13 @@ def get_db_path():
     if os.path.isabs(raw):
         return raw
     return os.path.join(_REPO_ROOT, raw)
+
+
+# --- chat --------------------------------------------------------------------
+
+def get_chat_settings():
+    return {
+        "enabled": _get_bool("chat", "enabled", DEFAULTS["chat"]["enabled"]),
+        "kid_name": _get_str("chat", "kid_name",
+                             DEFAULTS["chat"]["kid_name"]).strip(),
+    }
