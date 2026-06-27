@@ -27,6 +27,8 @@ crashing the running agent.
 import configparser
 import os
 
+from .notification_logic import parse_notify
+
 # config.ini lives at the repo root (the parent of this kidmon/ directory).
 # Using __file__ makes the path independent of the current working directory.
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -49,8 +51,9 @@ DEFAULTS = {
     },
     "notifications": {
         "sound_enabled": True,
-        "sound_file": "",                 # path to a .wav; empty => system beep
-        "thresholds": "15,5,2,1",         # minutes-remaining marks to alert at
+        "sound_file": "",                 # default/fallback .wav; empty => beep
+        "thresholds": "15,5,2,1",         # legacy: marks to alert at (one sound)
+        "notify": "",                     # preferred: "15:gentle, 5:urgent, 1:urgent"
         "popup_enabled": False,           # also show an on-screen popup?
     },
     "monitoring": {
@@ -172,25 +175,74 @@ def get_weekday_limits():
 
 # --- notifications -----------------------------------------------------------
 
+def get_sounds():
+    """Return the ``[sounds]`` name -> path map (names are lower-cased)."""
+    parser = _parser()
+    if parser.has_section("sounds"):
+        return {name.lower(): path.strip()
+                for name, path in parser.items("sounds")}
+    return {}
+
+
+def _resolve_sound(path):
+    """Absolute path for a sound file (relative paths are repo-root relative)."""
+    if not path:
+        return None
+    return path if os.path.isabs(path) else os.path.join(_REPO_ROOT, path)
+
+
 def get_notification_settings():
-    thresholds_raw = _get_str("notifications", "thresholds",
-                              DEFAULTS["notifications"]["thresholds"])
-    thresholds = []
-    for item in _csv(thresholds_raw):
-        try:
-            thresholds.append(int(item))
-        except ValueError:
-            pass
-    # Largest first — the warning logic expects descending intervals.
-    thresholds.sort(reverse=True)
+    """Resolve notification config into thresholds + a minute->sound map.
+
+    Two ways to configure the marks:
+
+    * ``notify = 15:gentle, 5:urgent`` (preferred) — minutes are the thresholds
+      and each plays its named sound from ``[sounds]``; a missing/unknown name
+      falls back to ``sound_file``.
+    * ``thresholds = 15,5,1`` (legacy) — the single ``sound_file`` plays at every
+      mark.
+
+    Returns sound_enabled, popup_enabled, the descending ``thresholds`` list, a
+    ``sound_by_minute`` map (minute -> resolved path or None), and the resolved
+    ``default_sound`` (None means a system beep).
+    """
+    default_sound = _resolve_sound(
+        _get_str("notifications", "sound_file",
+                 DEFAULTS["notifications"]["sound_file"]).strip())
+    sounds_map = get_sounds()
+
+    notify_raw = _get_str("notifications", "notify",
+                          DEFAULTS["notifications"]["notify"]).strip()
+    if notify_raw:
+        pairs = parse_notify(notify_raw)  # [(minute, name_or_None)], desc
+        thresholds = [minute for minute, _ in pairs]
+        sound_by_minute = {}
+        for minute, name in pairs:
+            resolved = _resolve_sound(sounds_map.get(name.lower())) if name else None
+            sound_by_minute[minute] = resolved or default_sound
+    else:
+        thresholds = []
+        for item in _csv(_get_str("notifications", "thresholds",
+                                  DEFAULTS["notifications"]["thresholds"])):
+            try:
+                thresholds.append(int(item))
+            except ValueError:
+                pass
+        thresholds.sort(reverse=True)
+        sound_by_minute = {m: default_sound for m in thresholds}
+
+    if not thresholds:
+        thresholds = [15, 5, 1]
+        sound_by_minute = {m: default_sound for m in thresholds}
+
     return {
         "sound_enabled": _get_bool("notifications", "sound_enabled",
                                    DEFAULTS["notifications"]["sound_enabled"]),
-        "sound_file": _get_str("notifications", "sound_file",
-                               DEFAULTS["notifications"]["sound_file"]),
-        "thresholds": thresholds or [15, 5, 1],
         "popup_enabled": _get_bool("notifications", "popup_enabled",
                                    DEFAULTS["notifications"]["popup_enabled"]),
+        "thresholds": thresholds,
+        "sound_by_minute": sound_by_minute,
+        "default_sound": default_sound,
     }
 
 

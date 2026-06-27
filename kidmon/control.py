@@ -31,6 +31,7 @@ from .grace_logic import (
     decide_grace_action, RESET, NONE, LOCK_NOW, GRANT_SESSION, RELOCK,
 )
 from .schedule_logic import limit_for_weekday
+from .notification_logic import select_sound
 
 logger = logging.getLogger("kidmon.control")
 
@@ -55,6 +56,8 @@ class TimeControl:
 
         self.notif = config.get_notification_settings()
         self.warning_intervals = self.notif["thresholds"]
+        self.sound_by_minute = self.notif["sound_by_minute"]
+        self.default_sound = self.notif["default_sound"]
 
         self.activity = config.get_activity_settings()
 
@@ -216,10 +219,14 @@ class TimeControl:
         self.platform.lock()
         logger.info("PC locked")
 
-    def alert(self, message):
-        """Notify the kid: configurable sound, optional on-screen popup."""
+    def alert(self, message, sound_path=None):
+        """Notify the kid: per-threshold sound, optional on-screen popup.
+
+        ``sound_path`` is the resolved wav for this specific alert; when None the
+        configured default sound (or a system beep) is used.
+        """
         if self.notif["sound_enabled"]:
-            self.platform.play_sound(self.notif["sound_file"] or None)
+            self.platform.play_sound(sound_path or self.default_sound)
         if self.notif["popup_enabled"]:
             self.platform.notify("Computer time", message)
         logger.info("Alert: %s", message)
@@ -322,13 +329,16 @@ class TimeControl:
 
         notice = initial_remaining_notice(previous, remaining, self.warning_intervals)
         if notice is not None:
-            self.alert(format_remaining_message(notice))
+            sound = select_sound(notice, self.warning_intervals,
+                                 self.sound_by_minute, self.default_sound)
+            self.alert(format_remaining_message(notice), sound)
 
         for mins in warnings_to_send(previous, remaining,
                                      self.warning_intervals, self.warnings_sent):
             self.warnings_sent.add(mins)
             unit = "minute" if mins == 1 else "minutes"
-            self.alert(f"Computer will lock in {mins} {unit}!")
+            sound = self.sound_by_minute.get(mins) or self.default_sound
+            self.alert(f"Computer will lock in {mins} {unit}!", sound)
 
     # --- limit checks + enforcement -----------------------------------------
 
@@ -383,8 +393,12 @@ class TimeControl:
             secs = self.grace_period_seconds
             window = (f"{secs // 60} minute(s)"
                       if secs >= 60 and secs % 60 == 0 else f"{secs} seconds")
+            # Use the most urgent configured sound (the smallest threshold).
+            urgent = select_sound(0, self.warning_intervals,
+                                  self.sound_by_minute, self.default_sound)
             self.alert(f"You're out of time. Save your work now — the PC will "
-                       f"lock in {window}. This is your one save chance today.")
+                       f"lock in {window}. This is your one save chance today.",
+                       urgent)
             logger.info("Granted the one-per-day save session")
 
     # --- background loops ----------------------------------------------------

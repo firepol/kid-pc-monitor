@@ -23,7 +23,7 @@ History, activity and live state are stored in a local SQLite database on the ki
 - **Password-protected admin** — the kid status page is open; the controls require a parent login.
 - **Per-weekday daily limits** — e.g. 90 min on school days, 4 h on weekends, auto-applied each day.
 - **Scheduled bedtime locks** — lock automatically at set times.
-- **Sound warnings** — configurable `.wav` (or a system beep) at configurable minutes-remaining marks, instead of a mandatory popup. Optional on-screen popup too.
+- **Sound warnings** — a different named `.wav` per minutes-remaining mark (e.g. `15:gentle, 5:urgent`), instead of a mandatory popup. Optional on-screen popup too.
 - **Once-per-day save session** — after the first lock the kid gets one short window to log back in and save their work.
 - **Locked time doesn't count** — stepping away and locking the screen pauses the usage clock.
 - **Usage history + activity log** — SQLite-backed; see past days and today's top programs on the admin page.
@@ -93,7 +93,8 @@ All settings live in an optional `config.ini` at the repo root (copy `config.ini
 | `[web]` | `username`, `password_hash` | Admin login. Set via `scripts/set_password.py`. |
 | `[limits]` | `default` | Daily allowance in minutes for any day not listed. |
 | `[limits]` | `monday`..`sunday` | Per-weekday allowance overrides. |
-| `[notifications]` | `sound_enabled`, `sound_file`, `thresholds`, `popup_enabled` | Sound on/off, custom `.wav`, the minutes-remaining marks to alert at, and an optional popup. |
+| `[sounds]` | `name = path` | Name your `.wav` files once, then reference them by name in `notify`. |
+| `[notifications]` | `notify`, `sound_enabled`, `popup_enabled`, `sound_file`, `thresholds` | `notify = 15:gentle, 5:urgent, 1:urgent` maps each minutes-remaining mark to a named sound (the minutes are the alert thresholds). `sound_file` is the fallback; `thresholds` is the legacy single-sound form. |
 | `[monitoring]` | `monitored_users`, `exempt_users`, `grace_period_seconds` | Which OS accounts to restrict/exempt, and the save-session length. |
 | `[activity]` | `enabled`, `interval_seconds` | Foreground-program logging on/off and sample interval. |
 | `[storage]` | `db_path` | SQLite database path (relative to the repo root). |

@@ -62,11 +62,40 @@ def test_malformed_limit_falls_back():
               config.get_weekday_limits(), {"friday": 60})
 
 
-def test_notification_thresholds_sorted_desc():
+def test_notification_legacy_thresholds_sorted_desc():
     with _with_ini("[notifications]\nthresholds = 1, 10, 5\nsound_enabled = no\n"):
         n = config.get_notification_settings()
         check("thresholds sorted desc", n["thresholds"], [10, 5, 1])
         check("sound disabled", n["sound_enabled"], False)
+        check("legacy: one default sound per mark",
+              n["sound_by_minute"], {10: None, 5: None, 1: None})
+
+
+def test_notification_named_sounds_mapping():
+    ini = (
+        "[sounds]\n"
+        "gentle = /snd/gentle.wav\n"
+        "urgent = /snd/urgent.wav\n"
+        "[notifications]\n"
+        "sound_file = /snd/default.wav\n"
+        "notify = 15:gentle, 5:urgent, 1:\n"
+    )
+    with _with_ini(ini):
+        n = config.get_notification_settings()
+        check("thresholds from notify keys", n["thresholds"], [15, 5, 1])
+        check("named gentle resolved", n["sound_by_minute"][15], "/snd/gentle.wav")
+        check("named urgent resolved", n["sound_by_minute"][5], "/snd/urgent.wav")
+        # No name on the 1-minute mark -> falls back to the default sound.
+        check("missing name -> default", n["sound_by_minute"][1], "/snd/default.wav")
+        check("default sound resolved", n["default_sound"], "/snd/default.wav")
+
+
+def test_notification_unknown_name_falls_back_to_default():
+    ini = ("[notifications]\nsound_file = /snd/default.wav\n"
+           "notify = 10:nope\n")
+    with _with_ini(ini):
+        n = config.get_notification_settings()
+        check("unknown name -> default", n["sound_by_minute"][10], "/snd/default.wav")
 
 
 def test_monitoring_csv_parsing():
@@ -91,7 +120,9 @@ def main():
         test_web_overrides,
         test_per_weekday_limits,
         test_malformed_limit_falls_back,
-        test_notification_thresholds_sorted_desc,
+        test_notification_legacy_thresholds_sorted_desc,
+        test_notification_named_sounds_mapping,
+        test_notification_unknown_name_falls_back_to_default,
         test_monitoring_csv_parsing,
         test_db_path_relative_resolves_to_repo_root,
     ]

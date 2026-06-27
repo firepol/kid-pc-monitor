@@ -34,15 +34,32 @@ default = 120
 saturday  = 240
 sunday    = 240
 
+[sounds]
+# Name your sound files once here, then refer to them by name below (so you
+# don't repeat full paths). Relative paths are resolved against the repo root.
+# gentle = /home/kid/sounds/gentle.wav
+# bell   = /home/kid/sounds/bell.wav
+# urgent = C:\sounds\urgent.wav
+
 [notifications]
 # Warn the kid as time runs low. Instead of a mandatory popup, play a sound at
-# each of these minutes-remaining marks. Set sound_file to a .wav to customise
-# (empty = a default system beep). popup_enabled also shows an on-screen popup.
+# each minutes-remaining mark.
 sound_enabled = true
-# sound_file  = C:\sounds\warning.wav      # Windows
-# sound_file  = /home/kid/warning.wav      # Linux
+popup_enabled = false      # also show an on-screen popup?
+
+# Preferred: map each minute mark to a sound name from [sounds] above. The
+# minutes listed here ARE the alert thresholds — e.g. alert at 15, 5, 2 and 1
+# minutes left, each with its own sound. A name you leave off (e.g. "1:") plays
+# the default sound. Unknown/empty names fall back to sound_file below.
+# notify = 15:gentle, 5:bell, 2:urgent, 1:urgent
+
+# Default/fallback sound, used for any mark whose name is missing or unknown
+# (empty = a system beep).
+# sound_file = /home/kid/sounds/warning.wav
+
+# Legacy alternative to "notify": one sound (sound_file) at each of these marks.
+# Ignored when "notify" is set.
 thresholds = 15,5,2,1
-popup_enabled = false
 
 [monitoring]
 # Restrict who is monitored by OS username. Leave both empty to monitor every
