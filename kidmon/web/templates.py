@@ -150,6 +150,12 @@ ADMIN_PAGE = """<!DOCTYPE html>
   .muted { color:#64748b; }
   table { width:100%; border-collapse:collapse; font-size:.9rem; }
   td, th { text-align:left; padding:4px 6px; border-bottom:1px solid #e2e8f0; }
+  .barrow { display:flex; align-items:center; gap:8px; font-size:.85rem; padding:3px 0; }
+  .barrow .d { width:52px; flex:none; color:#64748b; }
+  .barrow .v { width:54px; flex:none; text-align:right; }
+  .track { flex:1; height:14px; background:#e2e8f0; border-radius:4px; position:relative; overflow:hidden; }
+  .bar { height:100%; border-radius:4px; min-width:2px; }
+  .lim { position:absolute; top:-1px; bottom:-1px; width:2px; background:#ef4444; }
   #msg { text-align:center; padding:10px; border-radius:8px; display:none; margin:10px 0; }
   #msg.s { background:#dcfce7; color:#166534; } #msg.e { background:#fee2e2; color:#991b1b; }
 </style>
@@ -207,8 +213,8 @@ ADMIN_PAGE = """<!DOCTYPE html>
   </div>
 
   <div class="group">
-    <h2>📈 Usage history</h2>
-    <table id="history"><tbody class="muted"><tr><td>Loading…</td></tr></tbody></table>
+    <h2>📈 Usage history <span class="muted" style="font-weight:400;font-size:.8rem">(red mark = limit)</span></h2>
+    <div id="history" class="muted">Loading…</div>
   </div>
 
   <div class="group">
@@ -242,9 +248,20 @@ async function refresh(){
   document.getElementById("st-rem").textContent = s.time_remaining==null ? "—" : fmt(Math.max(0,s.time_remaining));
   document.getElementById("st-locks").textContent = (s.lock_times && s.lock_times.length) ? s.lock_times.join(", ") : "None";
   const hist = await (await fetch("/api/admin/history",{cache:"no-store"})).json();
-  document.getElementById("history").innerHTML = "<tbody>" + (hist.rows.length
-    ? hist.rows.map(r=>"<tr><td>"+r.day+"</td><td>"+fmt(Math.round(r.used_seconds/60))+"</td><td class='muted'>limit "+(r.limit_minutes?fmt(r.limit_minutes):"—")+"</td></tr>").join("")
-    : "<tr><td class='muted'>No history yet</td></tr>") + "</tbody>";
+  const rows = hist.rows.slice().reverse();  // oldest -> newest, reads top-down
+  const scale = Math.max(1, ...rows.map(r => Math.max(r.used_seconds/60, r.limit_minutes||0)));
+  document.getElementById("history").innerHTML = rows.length
+    ? rows.map(r => {
+        const used = Math.round(r.used_seconds/60);
+        const lim = r.limit_minutes;
+        const over = lim != null && used > lim;
+        const w = Math.min(100, used/scale*100);
+        const limMark = lim != null ? "<span class='lim' style='left:"+(lim/scale*100)+"%'></span>" : "";
+        return "<div class='barrow'><span class='d'>"+r.day.slice(5)+"</span>"
+             + "<span class='track'><span class='bar' style='width:"+w+"%;background:"+(over?"#ef4444":"#3b82f6")+"'></span>"+limMark+"</span>"
+             + "<span class='v'>"+fmt(used)+"</span></div>";
+      }).join("")
+    : "<span class='muted'>No history yet</span>";
   const act = await (await fetch("/api/admin/activity",{cache:"no-store"})).json();
   document.getElementById("activity").innerHTML = "<tbody>" + (act.rows.length
     ? act.rows.map(r=>"<tr><td>"+(r.process||"?")+"</td><td>"+fmt(Math.round(r.total/60))+"</td></tr>").join("")
