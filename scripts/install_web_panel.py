@@ -3,6 +3,12 @@ import os
 import sys
 from pathlib import Path
 
+# Share the single source of truth for ports (see scripts/install.py).
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+import config
+
+WEB_PANEL_PORT = config.get_ports()["web_panel"]
+
 def get_script_path():
     """Get the path to web_panel.py from user"""
     print("Where is web_panel.py located?")
@@ -307,13 +313,13 @@ if __name__ == "__main__":
         if create_task_with_power_settings():
             print("\nSetup complete! Task will run even on laptops using battery.")
             print("\nAccess the web panel from any device on your network at:")
-            print("   http://<this-pc-ip>:5000")
+            print(f"   http://<this-pc-ip>:{WEB_PANEL_PORT}")
         else:
             print("\nTrying alternative method...")
             if create_task_simple_schtasks():
                 print("\nSetup complete using XML method!")
                 print("\nAccess the web panel from any device on your network at:")
-                print("   http://<this-pc-ip>:5000")
+                print(f"   http://<this-pc-ip>:{WEB_PANEL_PORT}")
             else:
                 print("\nCould not create task. Please check the error messages above.")
 

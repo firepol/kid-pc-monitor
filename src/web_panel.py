@@ -5,6 +5,8 @@ import ipaddress
 import time
 from datetime import datetime
 
+from config import AGENT_PORT, WEB_PANEL_PORT
+
 app = Flask(__name__)
 
 # Store discovered PCs
@@ -28,7 +30,7 @@ def get_local_ip():
     except:
         return "127.0.0.1"
 
-def check_pc_status(ip, port=9999):
+def check_pc_status(ip, port=AGENT_PORT):
     """Check if a PC is locked"""
     try:
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Checking status of {ip}")
@@ -44,7 +46,7 @@ def check_pc_status(ip, port=9999):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Error checking {ip}: {e}")
         return "UNKNOWN"
 
-def get_current_user(ip, port=9999):
+def get_current_user(ip, port=AGENT_PORT):
     """Get the current username logged in on the kid PC (as reported by the agent)."""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -58,7 +60,7 @@ def get_current_user(ip, port=9999):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Error getting user from {ip}: {e}")
         return None
 
-def get_usage_limit(ip, port=9999):
+def get_usage_limit(ip, port=AGENT_PORT):
     """Get the current usage limit in minutes"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -72,7 +74,7 @@ def get_usage_limit(ip, port=9999):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Error getting limit from {ip}: {e}")
         return None
 
-def get_lock_times(ip, port=9999):
+def get_lock_times(ip, port=AGENT_PORT):
     """Get scheduled lock times"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -86,7 +88,7 @@ def get_lock_times(ip, port=9999):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Error getting lock times from {ip}: {e}")
         return None
 
-def get_time_remaining(ip, port=9999):
+def get_time_remaining(ip, port=AGENT_PORT):
     """Get time remaining until next lock"""
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -100,7 +102,7 @@ def get_time_remaining(ip, port=9999):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] Error getting time remaining from {ip}: {e}")
         return None
 
-def scan_for_servers(port=9999):
+def scan_for_servers(port=AGENT_PORT):
     """Scan the local network for PCs running the control server"""
     global discovered_pcs, last_scan_time
     local_ip = get_local_ip()
@@ -156,7 +158,7 @@ def scan_for_servers(port=9999):
     last_scan_time = datetime.now()
     return discovered_pcs
 
-def send_command(host, command, port=9999):
+def send_command(host, command, port=AGENT_PORT):
     """Send a command to the remote PC"""
     try:
         client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -782,7 +784,7 @@ if __name__ == '__main__':
     
     # Start the web server
     print(f"\nWeb Control Panel starting...")
-    print(f"Access from your phone at: http://{get_local_ip()}:5000")
-    print(f"Or from this PC at: http://localhost:5000")
-    
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    print(f"Access from your phone at: http://{get_local_ip()}:{WEB_PANEL_PORT}")
+    print(f"Or from this PC at: http://localhost:{WEB_PANEL_PORT}")
+
+    app.run(host='0.0.0.0', port=WEB_PANEL_PORT, debug=False)

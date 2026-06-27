@@ -27,6 +27,9 @@ from grace_logic import (
     RESET, NONE, LOCK_NOW, GRANT_SESSION, RELOCK,
 )
 
+from config import AGENT_PORT, KID_PAGE_PORT
+from kid_status_page import KidStatusServer
+
 # ============================================
 # CONFIGURATION
 # ============================================
@@ -49,6 +52,11 @@ EXEMPT_USERS = []
 # (every re-login then locks immediately).
 GRACE_PERIOD_SECONDS = 60
 
+# Ports (agent + read-only kid status page) are configured in config.ini at the
+# repo root and loaded via config.py — see AGENT_PORT / KID_PAGE_PORT imported
+# above. Edit config.ini (copied from config.ini.example) to change them; set
+# kid_status_page to "none" there to disable the status page.
+
 # ============================================
 
 # Set up logging
@@ -65,7 +73,7 @@ logging.basicConfig(
 
 # When launched via pythonw.exe (as the scheduled task does) there is no
 # console, so sys.stdout/sys.stderr are None and the first print() raises
-# AttributeError, killing the agent before the server can bind port 9999.
+# AttributeError, killing the agent before the server can bind the agent port.
 # Redirect them to a file so print() is safe and its output is captured.
 if sys.stdout is None or sys.stderr is None:
     _console_log = open('pc_control.out.log', 'a', buffering=1, encoding='utf-8')
@@ -478,12 +486,12 @@ class PCTimeControl:
 
 # Simple Remote Control Server
 class RemoteControlServer:
-    def __init__(self, port=9999, timeout=60):
+    def __init__(self, port=AGENT_PORT, timeout=60):
         """
         Initialize the remote control server.
-        
+
         Args:
-            port (int): Port number to listen on (default: 9999)
+            port (int): Port number to listen on (default: from config.ini)
             timeout (int): Socket timeout in seconds (default: 60)
         """
         self.port = port
@@ -752,9 +760,9 @@ if __name__ == "__main__":
         except socket.error:
             return False
     
-    if not check_port_availability(9999):
+    if not check_port_availability(AGENT_PORT):
         control.show_message(
-            f"Port 9999 is already in use or blocked!\n"
+            f"Port {AGENT_PORT} is already in use or blocked!\n"
             f"Check your firewall or other running applications.",
             "Network Error"
         )
@@ -780,6 +788,10 @@ if __name__ == "__main__":
     # failed startup can't lock the screen on its way to sys.exit(1).
     monitor_thread = threading.Thread(target=control.run_monitor, daemon=True)
     monitor_thread.start()
+
+    # Start the read-only kid status page (best-effort; won't block the agent)
+    if KID_PAGE_PORT:
+        KidStatusServer(control, KID_PAGE_PORT).start_in_thread()
 
     print("Server is running. Press Ctrl+C to stop.")
     

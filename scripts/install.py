@@ -3,9 +3,12 @@ import os
 import sys
 from pathlib import Path
 
-# Port the pc_control agent listens on for the parent web panel to connect to.
-# Must match RemoteControlServer's default port in src/pc_control.py.
-AGENT_PORT = 9999
+# Share the single source of truth for ports with the rest of the app. The
+# agent port the user picks here is written to config.ini, which pc_control.py
+# reads at runtime, so the task, the agent and the firewall rule all agree.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+import config
+
 FIREWALL_RULE_NAME = "Kid PC Monitor (agent)"
 
 def find_pc_control():
@@ -293,7 +296,7 @@ def print_logon_start_hint(target_user):
     desktop session (it shows dialogs, locks the workstation and watches the
     foreground window). It therefore can't run while only the admin is logged
     in — it starts on the kid's next logon via the AtLogon trigger. Checking
-    port 9999 right after install would show nothing, which is expected.
+    the agent port right after install would show nothing, which is expected.
     """
     print("\n" + "=" * 45)
     print(f"💡 The agent starts automatically when '{target_user}' next logs in.")
@@ -303,32 +306,54 @@ def print_logon_start_hint(target_user):
     print(f"   already signed in, run: schtasks /run /tn \"KidPCMonitor\").")
     print("=" * 45)
 
-def manual_firewall_command():
+def prompt_agent_port():
+    """Ask which TCP port the agent should listen on; Enter keeps the default.
+
+    The chosen value is written to config.ini so the agent (pc_control.py) and
+    the firewall rule below all use the same port.
+    """
+    default = config.get_ports()["agent"]
+    print(f"\n🔌 Which TCP port should the agent listen on?")
+    print(f"   The parent web panel connects to this port on each kid PC.")
+    while True:
+        raw = input(f"\nAgent port [{default}]: ").strip()
+        if not raw:
+            return default
+        try:
+            port = int(raw)
+        except ValueError:
+            print("❌ Please enter a number (or press Enter for the default).")
+            continue
+        if 1 <= port <= 65535:
+            return port
+        print("❌ Port must be between 1 and 65535.")
+
+def manual_firewall_command(port):
     """The netsh command a user can run by hand to open the agent port."""
     return (
         f'netsh advfirewall firewall add rule '
         f'name="{FIREWALL_RULE_NAME}" dir=in action=allow '
-        f'protocol=TCP localport={AGENT_PORT}'
+        f'protocol=TCP localport={port}'
     )
 
-def configure_firewall():
+def configure_firewall(port):
     """Add a Windows Firewall inbound rule for the agent port.
 
-    The agent listens on AGENT_PORT so the parent web panel can connect to it.
-    Without an inbound rule Windows Firewall blocks those connections, so the
-    panel can't reach the kid PC. We make this idempotent by deleting any rule
-    with the same name first, then adding a fresh one.
+    The agent listens on the configured port so the parent web panel can
+    connect to it. Without an inbound rule Windows Firewall blocks those
+    connections, so the panel can't reach the kid PC. We make this idempotent
+    by deleting any rule with the same name first, then adding a fresh one.
     """
-    print(f"\n🔥 Windows Firewall: the agent listens on TCP port {AGENT_PORT} so")
+    print(f"\n🔥 Windows Firewall: the agent listens on TCP port {port} so")
     print("   the parent web panel can connect to this PC.")
     print("   Incoming connections must be allowed through the firewall.")
 
     confirm = input(
-        f"\nAdd a firewall rule to allow incoming TCP port {AGENT_PORT}? (y/n): "
+        f"\nAdd a firewall rule to allow incoming TCP port {port}? (y/n): "
     ).lower()
     if confirm != 'y':
         print("\nℹ️  Skipped. To allow it later, run this in an admin prompt:")
-        print(f"   {manual_firewall_command()}")
+        print(f"   {manual_firewall_command(port)}")
         return False
 
     # Remove any pre-existing rule with this name so we don't stack duplicates.
@@ -338,11 +363,11 @@ def configure_firewall():
     )
 
     result = subprocess.run(
-        manual_firewall_command(), shell=True, capture_output=True, text=True
+        manual_firewall_command(port), shell=True, capture_output=True, text=True
     )
 
     if result.returncode == 0:
-        print(f"\n✅ Firewall rule added: incoming TCP port {AGENT_PORT} allowed.")
+        print(f"\n✅ Firewall rule added: incoming TCP port {port} allowed.")
         return True
     else:
         print("\n❌ Could not add firewall rule automatically.")
@@ -351,7 +376,7 @@ def configure_firewall():
         if result.stderr.strip():
             print(result.stderr.strip())
         print("\nYou can add it manually from an admin prompt:")
-        print(f"   {manual_firewall_command()}")
+        print(f"   {manual_firewall_command(port)}")
         return False
 
 def remove_firewall_rule():
@@ -417,9 +442,13 @@ if __name__ == "__main__":
                 print("\n❌ Could not create task. Please check the error messages above.")
 
         # The task only matters if the parent web panel can reach the agent,
-        # which Windows Firewall blocks by default — offer to open the port.
+        # which Windows Firewall blocks by default — let the user pick the port,
+        # persist it to config.ini, then open that port.
         if task_created:
-            configure_firewall()
+            agent_port = prompt_agent_port()
+            config_path = config.write_ports(agent=agent_port)
+            print(f"\n✅ Saved agent port {agent_port} to {config_path}")
+            configure_firewall(agent_port)
             print_logon_start_hint(target_user)
 
     elif choice == "2":

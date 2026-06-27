@@ -19,6 +19,7 @@ DIY parental control system for parents who code. If you know what 'pip install'
 - **💾 Persistent settings** - Limits survive PC restarts
 - **👤 User-specific restrictions** - Monitor only specific Windows accounts
 - **📊 Real-time status** - See current limits and time remaining
+- **🧒 Kid status page** - A read-only web page on the kid's PC so they can see how much time is left
 
 ## 📸 Screenshots
 
@@ -45,7 +46,7 @@ If these terms scare you, consider commercial alternatives like:
 ### Prerequisites
 - **Kid PCs:** Windows 10/11 (the monitoring agent uses Windows APIs)
 - **Parent / admin machine:** Windows, Linux, or macOS with Python 3.7+ (runs the Flask web panel only)
-- **Network:** Kid PCs must accept inbound TCP **9999** from the machine running the web panel (usually the same LAN; cross-subnet works if routed and allowed by firewalls). The web panel listens on TCP **5000** for your browser or phone.
+- **Network:** Kid PCs must accept inbound TCP **9999** from the machine running the web panel (usually the same LAN; cross-subnet works if routed and allowed by firewalls). The web panel listens on TCP **5000** for your browser or phone. The optional kid status page listens on TCP **8080** on each kid PC (see [Kid status page](#-kid-status-page)).
 
 Auto-discovery scans the `/24` subnet containing the parent machine's primary IPv4 address (see `scan_for_servers` in `src/web_panel.py`). If discovery misses a PC, you can still use it once the agent is reachable at its IP.
 
@@ -206,7 +207,39 @@ While remote unlock isn't possible for security, you can:
 - Send a message to request unlock
 - Restart the PC (if no password)
 
+### 🧒 Kid status page
+Each kid PC also serves a small **read-only** web page so the kid can see how much time they have left — without giving them any control.
+
+- Open `http://localhost:8080` on the kid's own PC, or `http://KID-PC-IP:8080` from another device on the LAN (e.g. their phone). Bookmark it for them.
+- It shows time remaining before the next lock, the daily limit, and the next bedtime lock time. It refreshes automatically every 15 seconds.
+- It is **read-only**: it cannot set, clear, or extend limits, lock the PC, or run any command. All control still happens from the parent web panel.
+- Exempt users (parents) see "No time limit right now".
+
+**Endpoints** (served by the agent; implemented in `src/kid_status_page.py`):
+- `GET /` — the status page (HTML)
+- `GET /api/status` — the same data as JSON
+
+**Configuration / disabling:** the port is the `kid_status_page` value in `config.ini` (default `8080`) — see [Ports (config.ini)](#-ports-configini). Set it to `none` (or leave it blank) to disable the page entirely. To reach it from another device, allow inbound `<port>/tcp` on the kid PC's firewall.
+
 ## ⚙️ Configuration
+
+### 🔌 Ports (config.ini)
+All ports live in a single optional `config.ini` at the repo root, read by both the agent and the web panel via `src/config.py`. Copy the template and edit it:
+
+```bash
+cp config.ini.example config.ini
+```
+
+```ini
+[ports]
+agent = 9999            # agent (pc_control.py) on each kid PC
+web_panel = 5000        # parent web panel (web_panel.py)
+kid_status_page = 8080  # read-only kid status page; "none" to disable
+```
+
+- `config.ini` is **optional and gitignored** (per-machine). Any value you omit — or the whole file — falls back to the built-in defaults shown above.
+- The kid-PC installer (`python scripts/install.py`) asks which agent port to use (press Enter for `9999`) and writes `config.ini` for you, then opens that port in the Windows Firewall.
+- **Split deployment:** the agent runs on each kid PC and the web panel on the parent PC — different machines, each with their own `config.ini`. If you change `agent`, set the **same** value on both so the panel can still reach the kid PC.
 
 ### Custom PC Names
 Edit `src/web_panel.py`:
@@ -270,6 +303,7 @@ nothing shows up, see the task-troubleshooting note below.
 
 ### "Can't connect from phone"
 - Check firewall allows port 5000 (web panel host) and port 9999 (each kid PC running the agent)
+- For the kid status page, allow port 8080 on the kid PC's firewall
 - On Linux parents, ensure the host firewall allows inbound **5000/tcp** (e.g. `ufw allow 5000/tcp`)
 - Use the web panel machine's IP address, not localhost
 - Ensure `web_panel.py` is running
@@ -314,6 +348,7 @@ The platform-independent logic has unit tests under `tests/`. They use only the 
 # From the repo root
 python tests/test_grace_logic.py
 python tests/test_warning_logic.py
+python tests/test_config.py
 ```
 
 Each test file is runnable on its own and prints a line per case (and exits non-zero on failure). If you prefer, you can also run them with pytest:
