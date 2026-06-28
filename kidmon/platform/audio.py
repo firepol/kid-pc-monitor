@@ -16,6 +16,11 @@ caller can fall back to its own WAV path). It never raises.
 import shutil
 import subprocess
 
+# On Windows, ffplay/mpv are console apps; launched from the windowless agent
+# (pythonw) they'd each pop a console window. CREATE_NO_WINDOW suppresses it.
+# The flag only exists on Windows; 0 is a no-op elsewhere.
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
 # General-purpose players that handle compressed formats (opus/mp3/ogg/…).
 # Each entry is (executable, extra-args-to-play-once-and-exit-quietly).
 _RICH_PLAYERS = [
@@ -43,7 +48,7 @@ def play_file(path, timeout=30):
     exe, args = found
     try:
         done = subprocess.run([exe, *args, path], capture_output=True,
-                              timeout=timeout)
+                              timeout=timeout, creationflags=_NO_WINDOW)
         return done.returncode == 0
     except Exception:
         return False

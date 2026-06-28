@@ -25,9 +25,11 @@ class WindowsOps(PlatformOps):
     def is_locked(self):
         """True if LogonUI.exe is present (the lock/login screen is showing)."""
         try:
+            # No shell=True (avoids spawning cmd.exe) and CREATE_NO_WINDOW so
+            # this 3-second poll never flashes a console window on the desktop.
             out = subprocess.check_output(
-                'tasklist /FI "IMAGENAME eq LogonUI.exe" /NH',
-                shell=True, text=True)
+                ["tasklist", "/FI", "IMAGENAME eq LogonUI.exe", "/NH"],
+                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
             return "LogonUI.exe" in out
         except Exception as e:
             logger.error("is_locked check failed: %s", e)
