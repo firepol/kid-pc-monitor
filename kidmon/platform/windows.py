@@ -8,6 +8,7 @@ degrades gracefully without it.
 import ctypes
 import getpass
 import logging
+import os
 import subprocess
 import threading
 
@@ -90,13 +91,23 @@ class WindowsOps(PlatformOps):
     def play_sound(self, path=None):
         """Play a warning sound. .wav uses the stdlib (no dependency); other
         formats (mp3, opus, ogg, …) need ffplay/mpv on PATH. Empty path beeps."""
+        def _beep():
+            try:
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
+            except Exception as e:
+                logger.error("play_sound (beep) failed: %s", e)
+
         def _play():
             if not path:
-                try:
-                    import winsound
-                    winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-                except Exception as e:
-                    logger.error("play_sound (beep) failed: %s", e)
+                _beep()
+                return
+            # A misconfigured path should still warn the kid: fall back to the
+            # default system beep rather than silently playing nothing.
+            if not os.path.exists(path):
+                logger.warning("Sound file not found: %s — using default beep.",
+                               path)
+                _beep()
                 return
             if path.lower().endswith(".wav"):
                 try:
@@ -106,11 +117,13 @@ class WindowsOps(PlatformOps):
                     return
                 except Exception as e:
                     logger.error("winsound failed for %s: %s", path, e)
-            # Non-wav (or winsound failed): try a general-purpose player.
+            # Non-wav (or winsound failed): try a general-purpose player, then
+            # beep if none is available so the warning is never silent.
             if not audio.play_file(path):
                 logger.warning(
                     "Could not play %s — install ffmpeg (ffplay) or mpv to use "
                     "non-wav sounds, or point the config at a .wav file.", path)
+                _beep()
 
         threading.Thread(target=_play, daemon=True).start()
 

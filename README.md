@@ -157,7 +157,7 @@ sound_file = sounds/warning.wav
   - **Windows:** `winget install Gyan.FFmpeg` (or `choco install ffmpeg`), then re-open the session so `PATH` updates.
   - **Linux (Debian/Ubuntu):** `sudo apt install ffmpeg` — or `mpv`.
 
-If you reference a non-`.wav` sound but neither `ffplay` nor `mpv` is installed, the agent logs a warning and falls back to a system beep (Windows) or terminal bell (Linux); enforcement is unaffected. On Linux, `paplay` also covers `ogg`/`flac` even without ffmpeg.
+If a sound can't be played — the file is **missing/mistyped**, or it's a non-`.wav` format and neither `ffplay` nor `mpv` is installed — the agent logs a warning and falls back to a system beep (Windows) or terminal bell (Linux), so a warning is never silently dropped. Enforcement is unaffected either way. On Linux, `paplay` also covers `ogg`/`flac` even without ffmpeg. (The terminal bell is inaudible when the agent runs as a background service, so prefer a real, existing sound file.)
 
 **Paths** — relative paths in `[sounds]` (and `sound_file`) are resolved against the repo root, so `gentle = sounds/gentle.wav` points at `<repo>/sounds/gentle.wav` regardless of where the agent is launched from. Absolute paths (e.g. `C:\sounds\urgent.opus` or `/home/kid/alerts/urgent.mp3`) are used as-is.
 

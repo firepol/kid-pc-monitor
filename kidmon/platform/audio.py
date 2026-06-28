@@ -34,13 +34,16 @@ def find_player():
 
 
 def play_file(path, timeout=30):
-    """Play an audio file via ffplay/mpv. True if a player ran, else False."""
+    """Play an audio file via ffplay/mpv. True only if the player actually
+    played it (exit code 0), else False — so a missing/unreadable file (the
+    player exits non-zero) lets the caller fall back to its own beep."""
     found = find_player()
     if not found:
         return False
     exe, args = found
     try:
-        subprocess.run([exe, *args, path], capture_output=True, timeout=timeout)
-        return True
+        done = subprocess.run([exe, *args, path], capture_output=True,
+                              timeout=timeout)
+        return done.returncode == 0
     except Exception:
         return False

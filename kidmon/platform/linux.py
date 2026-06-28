@@ -110,16 +110,23 @@ class LinuxOps(PlatformOps):
         flac, wav); paplay adds ogg/flac/wav; aplay is wav-only. Empty path or a
         total failure falls back to a terminal bell."""
         def _play():
-            if path:
+            target = path
+            # A misconfigured path should still warn (best effort): skip the
+            # players and fall through to the bell rather than play nothing.
+            if target and not os.path.exists(target):
+                logger.warning("Sound file not found: %s — using terminal bell.",
+                               target)
+                target = None
+            if target:
                 # Broadest support first, then PulseAudio, then ALSA (wav-only).
-                if audio.play_file(path):
+                if audio.play_file(target):
                     return
                 for player in ("paplay", "aplay"):
-                    if _which(player) and _run([player, path], timeout=30) is not None:
+                    if _which(player) and _run([player, target], timeout=30) is not None:
                         return
                 logger.warning(
                     "Could not play %s — install ffmpeg (ffplay) or mpv to use "
-                    "non-wav sounds.", path)
+                    "non-wav sounds.", target)
             # No file (or playback failed): a terminal bell as a last resort.
             try:
                 print("\a", end="", flush=True)
