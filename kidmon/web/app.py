@@ -100,20 +100,26 @@ def create_app(control, config, storage):
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
-        username, password_hash = config.get_admin_credentials()
+        _, password_hash = config.get_admin_credentials()
         configured = bool(password_hash)
         if request.method == "POST":
-            user = request.form.get("username", "")
             pw = request.form.get("password", "")
             if not configured:
                 return render_template_string(
                     LOGIN_PAGE, configured=False,
                     error="No admin password configured.")
-            if user == username and check_password_hash(password_hash, pw):
+            # One shared password for all parents — no username. Each parent
+            # picks a display name (for chat) at login; it's not a credential.
+            if check_password_hash(password_hash, pw):
                 session["admin"] = True
-                return redirect(url_for("admin"))
+                resp = redirect(url_for("admin"))
+                name = request.form.get("name", "").strip()[:40]
+                if name:
+                    resp.set_cookie(PARENT_NAME_COOKIE, name,
+                                    max_age=60 * 60 * 24 * 365, samesite="Lax")
+                return resp
             return render_template_string(
-                LOGIN_PAGE, configured=True, error="Wrong username or password.")
+                LOGIN_PAGE, configured=True, error="Wrong password.")
         return render_template_string(LOGIN_PAGE, configured=configured, error=None)
 
     @app.get("/logout")

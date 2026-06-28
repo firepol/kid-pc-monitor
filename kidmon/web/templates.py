@@ -215,12 +215,16 @@ LOGIN_PAGE = """<!DOCTYPE html>
 <body>
   <form method="post">
     <h1>🔒 Parent login</h1>
-    <input name="username" placeholder="Username" autofocus autocomplete="username">
-    <input name="password" type="password" placeholder="Password" autocomplete="current-password">
+    <input name="password" type="password" placeholder="Password" autofocus
+           autocomplete="current-password" required>
+    <input name="name" placeholder="Your name for chat (e.g. Mom) — optional"
+           autocomplete="name">
     <button type="submit">Log in</button>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     {% if not configured %}<div class="note">No admin password is configured yet.
       Set one with <code>scripts/set_password.py</code>.</div>{% endif %}
+    <div class="note">One shared password for all parents. The name is just your
+      chat label — pick "Mom", "Dad", etc.</div>
   </form>
 </body>
 </html>"""
@@ -336,7 +340,7 @@ async function post(url, body) {
   return data;
 }
 function fmt(mins){ if(mins==null) return "—"; if(mins>=60){const h=Math.floor(mins/60),m=mins%60;return h+"h "+String(m).padStart(2,"0")+"m";} return mins+" min"; }
-function esc(s){ return (s||"").replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+function esc(s){ return (s||"").replace(/[&<>'"]/g, function(c){ return "&#"+c.charCodeAt(0)+";"; }); }
 function setLimit(preset){ const v = preset || parseInt(document.getElementById("limit").value); if(!v||v<0){flash("Enter minutes (0 or more)",false);return;} post("/api/admin/set_limit",{minutes:v}); }
 function extend(){ const v=parseInt(document.getElementById("limit").value); if(!v){flash("Enter minutes",false);return;} post("/api/admin/extend",{minutes:v}); }
 function addLock(){ const t=document.getElementById("locktime").value; if(!t){flash("Pick a time",false);return;} post("/api/admin/add_lock_time",{time:t}); }

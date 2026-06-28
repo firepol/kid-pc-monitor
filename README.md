@@ -13,7 +13,7 @@ One app — `agent.py` — runs on each kid's PC and does everything: it enforce
 The parent just points a browser (phone, laptop, anything on the network) at the kid PC: `http://<kid-pc-ip>:9999`.
 
 - The **kid** sees a read-only "time left" page — no login.
-- The **parent** logs in at `/admin` (password) to set limits, lock now, schedule bedtime, send a message, and view usage history.
+- The **parent** logs in at `/admin` with a single shared password (no username — each parent just picks a chat display name like "Mom"/"Dad" at login) to set limits, lock now, schedule bedtime, send a message, and view usage history.
 
 History, activity and live state are stored in a local SQLite database on the kid PC, so everything survives restarts and you get a usage history over time.
 
@@ -117,7 +117,7 @@ All settings live in an optional `config.ini` at the repo root (copy `config.ini
 | Section | Key | Meaning |
 |---|---|---|
 | `[web]` | `port` | Web UI port (default 9999). |
-| `[web]` | `username`, `password_hash` | Admin login. Set via `scripts/set_password.py`. |
+| `[web]` | `password_hash` | Single shared admin password (no username). Set via `scripts/set_password.py`. |
 | `[limits]` | `default` | Daily allowance in minutes for any day not listed. |
 | `[limits]` | `monday`..`sunday` | Per-weekday allowance overrides. |
 | `[sounds]` | `name = path` | Name your sound files once, then reference them by name in `notify`. Relative paths resolve against the repo root. See [Sounds](#sounds). |
