@@ -46,6 +46,11 @@ On the kid's PC:
 ```bash
 git clone https://github.com/rookie7799/kid-pc-monitor.git
 cd kid-pc-monitor
+
+# recommended: install into a virtual environment (keeps deps off system Python)
+python -m venv .venv
+# Linux:   source .venv/bin/activate
+# Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 # (optional) customise settings
@@ -58,6 +63,8 @@ python scripts/set_password.py
 python agent.py
 ```
 
+A virtual environment is optional for a quick manual run, but **recommended if you'll install the auto-start service** below — see [Run it automatically at startup](#run-it-automatically-at-startup) for how the service is tied to the interpreter you install it with.
+
 Then from any device on the network open `http://<kid-pc-ip>:9999`. To find kid PCs automatically:
 
 ```bash
@@ -66,23 +73,40 @@ python discover.py     # scans your /24 and prints each agent's URL to bookmark
 
 ### Run it automatically at startup
 
-**Windows** (from an Administrator prompt) — creates a logon scheduled task and opens the firewall port:
+> **The auto-start service runs whichever Python interpreter you install it with.** Both installers bake the *absolute path* of the Python that runs them into the service (the Windows scheduled task and the Linux systemd unit). So if you use a virtual environment, **run the installer with that venv's interpreter** — then the service uses the venv (and its installed packages) automatically, with no "activation" needed at runtime. If you later move or rebuild the venv, re-run the installer so the path is updated.
+>
+> Install the repo somewhere the kid account can read/write (e.g. `C:\KidPCMonitor` or under the kid's home) — **not** `C:\Program Files\…`. The agent writes its SQLite database (and log) next to the repo, and the service runs in the kid's session.
+
+**Windows** — from an **Administrator** prompt, using the venv you created in Quick start. Call the venv's Python by full path so the right interpreter is captured regardless of activation. This creates a logon scheduled task and opens the firewall port:
 
 ```cmd
-python scripts\install_windows.py
-python scripts\set_password.py
+cd C:\KidPCMonitor
+:: install deps into the venv first if you haven't:
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+.venv\Scripts\python.exe scripts\install_windows.py
+.venv\Scripts\python.exe scripts\set_password.py
 ```
 
-Remove it later with `python scripts\install_windows.py --remove`.
+Verify the task points at your venv:
 
-**Linux** (as the kid's user) — installs a systemd user service:
+```cmd
+schtasks /query /tn KidPCMonitor /fo list /v | findstr "Task To Run"
+:: -> "C:\KidPCMonitor\.venv\Scripts\pythonw.exe" "C:\KidPCMonitor\agent.py"
+```
+
+Remove it later with `.venv\Scripts\python.exe scripts\install_windows.py --remove`. (Without a venv, just use `python` — the system interpreter is captured instead; make sure `pip install -r requirements.txt` ran against that same interpreter.)
+
+**Linux** (as the kid's user) — installs a systemd user service. The unit's `ExecStart` is set from the `python3` on `PATH` at install time, so **activate the venv first** (or otherwise put it first on `PATH`):
 
 ```bash
+cd ~/kid-pc-monitor
+source .venv/bin/activate          # so the unit captures the venv's python3
 scripts/install_linux.sh
 python3 scripts/set_password.py
 ```
 
-Remove it later with `scripts/install_linux.sh --remove`. Open the web port in your firewall if you want to reach it from another device.
+Confirm the unit uses the venv with `systemctl --user cat kidmon.service` (look at the `ExecStart=` line). Remove it later with `scripts/install_linux.sh --remove`. Open the web port in your firewall if you want to reach it from another device (e.g. `sudo ufw allow 9999/tcp`).
 
 ## Configuration
 
