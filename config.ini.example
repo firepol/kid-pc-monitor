@@ -55,19 +55,20 @@ sunday    = 240
 sound_enabled = true
 popup_enabled = false      # also show an on-screen popup?
 
-# Preferred: map each minute mark to a sound name from [sounds] above. The
-# minutes listed here ARE the alert thresholds — e.g. alert at 15, 5, 2 and 1
-# minutes left, each with its own sound. A name you leave off (e.g. "1:") plays
-# the default sound. Unknown/empty names fall back to sound_file below.
-# notify = 15:gentle, 5:bell, 2:urgent, 1:urgent
+# RECOMMENDED — "notify": map each minute mark to a sound name from [sounds]
+# above. The minutes listed here ARE the alert thresholds — e.g. alert at 15, 5,
+# 2 and 1 minutes left, each with its own sound. A name you leave off (e.g.
+# "1:") plays the default sound. Unknown/empty names fall back to sound_file.
+notify = 15:gentle, 5:bell, 2:urgent, 1:urgent
 
 # Default/fallback sound, used for any mark whose name is missing or unknown
 # (empty = a system beep).
-# sound_file = /home/kid/sounds/warning.wav
+# sound_file = sounds/warning.wav
 
-# Legacy alternative to "notify": one sound (sound_file) at each of these marks.
-# Ignored when "notify" is set.
-thresholds = 15,5,2,1
+# LEGACY alternative to "notify": play the single sound_file at each of these
+# marks (no per-mark sounds). Ignored whenever "notify" is set above. Kept only
+# for older configs — prefer "notify".
+# thresholds = 15,5,2,1
 
 [monitoring]
 # Restrict who is monitored by OS username. Leave both empty to monitor every

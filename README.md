@@ -88,6 +88,8 @@ cd C:\KidPCMonitor
 .venv\Scripts\python.exe scripts\set_password.py
 ```
 
+The installer **prompts for the kid's Windows account** — the account they log in with, *not* the admin account you're running the installer from. The task is registered to run in **that account's** session at their logon (so it can lock the kid's screen, not the admin's), and the kid account is written to `[monitoring] monitored_users` so only they are restricted. To skip the prompt (e.g. for scripted installs), pass `--user Tommy` (or `--user ""` to run in the installing account's session).
+
 Verify the task points at your venv:
 
 ```cmd

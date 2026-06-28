@@ -46,21 +46,59 @@ def pythonw_path():
     return candidate if os.path.exists(candidate) else sys.executable
 
 
-def create_task():
+def account_exists(name):
+    """True if a local Windows account by this name exists (best effort)."""
+    result = subprocess.run(f'net user "{name}"', shell=True,
+                            capture_output=True, text=True)
+    return result.returncode == 0
+
+
+def prompt_kid_account(cli_value):
+    """Ask which account the kid logs in with (the one to monitor / run as).
+
+    The installer is run by an admin, but the agent must run in the *kid's*
+    session to lock their screen — so we register the task to run as the kid.
+    Returns the chosen account name, or "" to run in the installing session.
+    """
+    if cli_value is not None:
+        return cli_value.strip()
+    print("\nWhich Windows account does the kid log in with?")
+    print("This is the kid's account — NOT the admin account running this")
+    print("installer. The agent runs in that account's session at their logon.")
+    try:
+        name = input("Kid's Windows username "
+                     "(leave blank to use this account): ").strip()
+    except EOFError:
+        name = ""
+    if name and not account_exists(name):
+        print(f"Warning: no local account '{name}' was found "
+              "(net user). Double-check the spelling; continuing anyway.")
+    return name
+
+
+def create_task(run_as=None):
     py = pythonw_path()
-    # Start at logon for the current user. The program/args must be wrapped in
-    # *double* quotes (Windows ignores single quotes), escaped as \" so they
-    # survive the outer /tr "..." — otherwise a path with spaces (e.g. under
-    # "Program Files") fails and the agent never launches.
-    cmd = (
-        f'schtasks /create /tn "{TASK_NAME}" /sc onlogon /rl highest /f '
-        f'/tr "\\"{py}\\" \\"{AGENT}\\""'
-    )
+    # The program/args must be wrapped in *double* quotes (Windows ignores single
+    # quotes), escaped as \" so they survive the outer /tr "..." — otherwise a
+    # path with spaces (e.g. under "Program Files") fails and the agent never
+    # launches.
+    tr = f'/tr "\\"{py}\\" \\"{AGENT}\\""'
+    if run_as:
+        # Run in the kid's own session at their logon, as that (standard) user.
+        # /it = interactive token, so no stored password is needed and the agent
+        # gets the desktop session it needs to lock the screen. A standard kid
+        # account can't elevate, so we do NOT request /rl highest here.
+        scope = f'/ru "{run_as}" /it'
+    else:
+        # No account given: run in the installing account's session, elevated.
+        scope = '/rl highest'
+    cmd = f'schtasks /create /tn "{TASK_NAME}" /sc onlogon /f {scope} {tr}'
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
         print("Failed to create task:\n" + (result.stderr or result.stdout))
         return False
-    print(f"Scheduled task '{TASK_NAME}' created (runs at logon).")
+    who = f"as '{run_as}'" if run_as else "in this account's session"
+    print(f"Scheduled task '{TASK_NAME}' created (runs at logon, {who}).")
     _allow_on_battery()
     return True
 
@@ -129,6 +167,10 @@ def remove():
 def main():
     parser = argparse.ArgumentParser(description="Install the agent on Windows.")
     parser.add_argument("--remove", action="store_true", help="uninstall instead")
+    parser.add_argument("--user", metavar="NAME",
+                        help="kid's Windows account to monitor / run the task as "
+                             "(skips the prompt; pass an empty string to use the "
+                             "installing account)")
     args = parser.parse_args()
 
     if not is_admin():
@@ -145,9 +187,17 @@ def main():
     if not check_dependencies():
         sys.exit(1)
 
-    if create_task():
+    kid = prompt_kid_account(args.user)
+
+    if create_task(run_as=kid):
+        if kid:
+            # Scope monitoring to the kid account so the agent only enforces
+            # limits for them, even on a shared PC.
+            config.set_values("monitoring", {"monitored_users": kid})
+            print(f"Monitoring scoped to account: {kid}")
         open_firewall(config.get_web_port())
-        print("\nDone. The agent starts at next logon (or run `python agent.py` now).")
+        print("\nDone. The agent starts at the kid's next logon "
+              "(or run `python agent.py` now to test).")
         print("Set the parent password with: python scripts\\set_password.py")
 
 

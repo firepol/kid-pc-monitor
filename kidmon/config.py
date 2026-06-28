@@ -202,10 +202,17 @@ def get_sounds():
 
 
 def _resolve_sound(path):
-    """Absolute path for a sound file (relative paths are repo-root relative)."""
+    """Absolute path for a sound file (relative paths are repo-root relative).
+
+    Relative paths may point outside the repo (e.g. ``../sounds/gentle.wav``);
+    normpath collapses the ``..`` and fixes separators so the result is a clean
+    absolute path on both Windows and Linux.
+    """
     if not path:
         return None
-    return path if os.path.isabs(path) else os.path.join(_REPO_ROOT, path)
+    if not os.path.isabs(path):
+        path = os.path.join(_REPO_ROOT, path)
+    return os.path.normpath(path)
 
 
 def get_notification_settings():
