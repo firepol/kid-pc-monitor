@@ -71,6 +71,11 @@ class TimeControl:
         # Friendly display name for the kid (header + chat); falls back to the
         # OS account name. The kid can't change it (it's server-side config).
         self.kid_name = chat["kid_name"] or self.current_user
+        # How a parent message reaches the kid PC: the admin-panel "send message"
+        # pops up on screen; a chat-window message only plays a sound (no popup).
+        self.chat_admin_popup = chat["admin_popup_enabled"]
+        self.chat_sound_enabled = chat["chat_sound_enabled"]
+        self.chat_sound = chat["chat_sound"]
 
         # Live enforcement state (guarded by state_lock). The server/web threads
         # mutate limit/start_time/warnings while the monitor thread reads them.
@@ -329,11 +334,17 @@ class TimeControl:
             self.last_remaining = None
         self.save_state()
 
-    def post_chat(self, body, is_parent, parent_name=None):
+    def post_chat(self, body, is_parent, parent_name=None, announce="chat"):
         """Post a chat message. Role is decided by the caller from the session.
 
-        Parent messages also pop up on the kid's screen (popup only, no sound);
-        kid replies are stored only — the parent sees them on their own device.
+        ``announce`` controls how a *parent* message reaches the kid PC:
+
+        * ``"admin"`` — sent from the admin panel "send message" box: pop up on
+          the kid's screen when ``admin_popup_enabled`` (no sound).
+        * ``"chat"`` — typed in the chat window: play a sound when
+          ``chat_sound_enabled`` (no popup).
+
+        Kid replies are stored only — the parent sees them on their own device.
         Returns the stored message dict, or None for an empty body.
         """
         body = body.strip()[:500]
@@ -346,7 +357,11 @@ class TimeControl:
         ts = datetime.now().isoformat()
         self.storage.add_message(ts, sender, body, name)
         if is_parent:
-            self.platform.notify(f"Message from {name}", body)
+            if announce == "admin":
+                if self.chat_admin_popup:
+                    self.platform.notify(f"Message from {name}", body)
+            elif self.chat_sound_enabled:
+                self.platform.play_sound(self.chat_sound)
         return {"ts": ts, "sender": sender, "name": name, "body": body}
 
     # --- remaining time + warnings ------------------------------------------

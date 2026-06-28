@@ -97,3 +97,15 @@ db_path = kidmon.db
 enabled = true
 # Name shown for the kid in the header and chat. Defaults to the OS username.
 # kid_name = Tommy
+#
+# How a parent message reaches the kid's PC:
+#  * Admin-panel "send message" pops up on the kid's screen.
+#  * A message typed in the chat window plays a sound (no popup).
+# (These are separate from [notifications] popup_enabled, which is only for the
+# time-running-low warnings.)
+admin_popup_enabled = true
+chat_sound_enabled = true
+# Sound for an incoming chat message: a [sounds] name (e.g. "gentle") or a path.
+# Leave empty to use a plain system beep. The kid's browser status page also
+# shows the message; its browser notification uses the OS default sound.
+# chat_sound = gentle

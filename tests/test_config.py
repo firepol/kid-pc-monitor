@@ -112,10 +112,27 @@ def test_chat_settings():
         c = config.get_chat_settings()
         check("chat enabled by default", c["enabled"], True)
         check("kid_name empty by default", c["kid_name"], "")
-    with _with_ini("[chat]\nenabled = false\nkid_name = Tommy\n"):
+        check("admin popup on by default", c["admin_popup_enabled"], True)
+        check("chat sound on by default", c["chat_sound_enabled"], True)
+        check("chat_sound none by default", c["chat_sound"], None)
+    with _with_ini("[chat]\nenabled = false\nkid_name = Tommy\n"
+                   "admin_popup_enabled = false\nchat_sound_enabled = false\n"):
         c = config.get_chat_settings()
         check("chat can be disabled", c["enabled"], False)
         check("kid_name read", c["kid_name"], "Tommy")
+        check("admin popup off", c["admin_popup_enabled"], False)
+        check("chat sound off", c["chat_sound_enabled"], False)
+
+
+def test_chat_sound_name_and_path():
+    # A [sounds] name resolves to its mapped file.
+    with _with_ini("[sounds]\nping = /snd/ping.wav\n[chat]\nchat_sound = ping\n"):
+        c = config.get_chat_settings()
+        check("chat_sound by name", c["chat_sound"], "/snd/ping.wav")
+    # A bare path is used as-is (absolute) — no [sounds] entry needed.
+    with _with_ini("[chat]\nchat_sound = /snd/other.wav\n"):
+        c = config.get_chat_settings()
+        check("chat_sound by path", c["chat_sound"], "/snd/other.wav")
 
 
 def test_db_path_relative_resolves_to_repo_root():
@@ -136,6 +153,7 @@ def main():
         test_notification_unknown_name_falls_back_to_default,
         test_monitoring_csv_parsing,
         test_chat_settings,
+        test_chat_sound_name_and_path,
         test_db_path_relative_resolves_to_repo_root,
     ]
     original = config.CONFIG_PATH

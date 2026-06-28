@@ -197,9 +197,11 @@ def create_app(control, config, storage):
             return jsonify(ok=False, message="Empty message"), 400
         # Route through the chat store (not just an OS popup): the message is
         # persisted and shows in the kid's chat thread even if notify-send /
-        # the OS notifier is missing, so it isn't silently dropped.
+        # the OS notifier is missing, so it isn't silently dropped. announce=
+        # "admin" makes it pop up on the kid's screen (when admin_popup_enabled).
         parent_name = request.cookies.get(PARENT_NAME_COOKIE, "Parent")
-        control.post_chat(body, is_parent=True, parent_name=parent_name)
+        control.post_chat(body, is_parent=True, parent_name=parent_name,
+                          announce="admin")
         return jsonify(ok=True, message="Message sent")
 
     @app.get("/api/admin/history")

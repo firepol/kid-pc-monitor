@@ -75,6 +75,12 @@ DEFAULTS = {
     "chat": {
         "enabled": True,
         "kid_name": "",                   # display name; empty => OS username
+        # Admin-panel "send message" pops up on the kid's screen.
+        "admin_popup_enabled": True,
+        # A message typed in the chat window plays a sound on the kid PC (but no
+        # popup). chat_sound is a [sounds] name or a path; empty => system beep.
+        "chat_sound_enabled": True,
+        "chat_sound": "",
     },
 }
 
@@ -306,8 +312,21 @@ def get_db_path():
 # --- chat --------------------------------------------------------------------
 
 def get_chat_settings():
+    # chat_sound accepts a [sounds] name (e.g. "gentle") or a path; resolve the
+    # name first, then fall back to treating it as a path. Empty => system beep.
+    raw_sound = _get_str("chat", "chat_sound",
+                         DEFAULTS["chat"]["chat_sound"]).strip()
+    chat_sound = (_resolve_sound(get_sounds().get(raw_sound.lower(), raw_sound))
+                  if raw_sound else None)
     return {
         "enabled": _get_bool("chat", "enabled", DEFAULTS["chat"]["enabled"]),
         "kid_name": _get_str("chat", "kid_name",
                              DEFAULTS["chat"]["kid_name"]).strip(),
+        "admin_popup_enabled": _get_bool(
+            "chat", "admin_popup_enabled",
+            DEFAULTS["chat"]["admin_popup_enabled"]),
+        "chat_sound_enabled": _get_bool(
+            "chat", "chat_sound_enabled",
+            DEFAULTS["chat"]["chat_sound_enabled"]),
+        "chat_sound": chat_sound,
     }

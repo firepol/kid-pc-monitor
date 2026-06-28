@@ -27,7 +27,7 @@ History, activity and live state are stored in a local SQLite database on the ki
 - **Once-per-day save session** — after the first lock the kid gets one short window to log back in and save their work.
 - **Locked time doesn't count** — stepping away and locking the screen pauses the usage clock.
 - **Usage history + activity log** — SQLite-backed; see past days (with a tiny bar chart) and today's top programs on the admin page.
-- **Parent ⇄ kid chat** — on the status page. The kid replies from their own page; the parent chats from the same page on their device and sets their display name there (so Mom and Dad differ). Parent messages pop up on the kid's screen; kid replies raise an unread badge + browser notification on the parent's device.
+- **Parent ⇄ kid chat** — on the status page. The kid replies from their own page; the parent chats from the same page on their device and sets their display name there (so Mom and Dad differ). A note sent from the admin panel pops up on the kid's screen; a message typed in the chat window just plays a sound there (both configurable — see `[chat]`). Kid replies raise an unread badge + browser notification on the parent's device.
 - **Cross-platform** — Windows and Linux kid PCs, behind a small OS-abstraction layer.
 - **User-specific monitoring** — restrict to (or exempt) specific OS accounts on a shared PC.
 
@@ -125,7 +125,7 @@ All settings live in an optional `config.ini` at the repo root (copy `config.ini
 | `[monitoring]` | `monitored_users`, `exempt_users`, `grace_period_seconds` | Which OS accounts to restrict/exempt, and the save-session length. |
 | `[activity]` | `enabled`, `interval_seconds` | Foreground-program logging on/off and sample interval. |
 | `[storage]` | `db_path` | SQLite database path (relative to the repo root). |
-| `[chat]` | `enabled`, `kid_name` | Turn the parent⇄kid chat on/off and set the kid's display name (defaults to the OS username). |
+| `[chat]` | `enabled`, `kid_name`, `admin_popup_enabled`, `chat_sound_enabled`, `chat_sound` | Turn the parent⇄kid chat on/off and set the kid's display name (defaults to the OS username). `admin_popup_enabled` (default on) pops up admin-panel "send message" notes on the kid's screen; a message typed in the chat window instead plays `chat_sound` (a `[sounds]` name or path; empty = system beep) when `chat_sound_enabled`, with no popup. |
 
 The parent can override the day's limit at runtime from the admin page; the configured per-weekday allowance auto-applies again the next day.
 
