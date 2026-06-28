@@ -39,10 +39,15 @@ sunday    = 240
 
 [sounds]
 # Name your sound files once here, then refer to them by name below (so you
-# don't repeat full paths). Relative paths are resolved against the repo root.
-# gentle = /home/kid/sounds/gentle.wav
-# bell   = /home/kid/sounds/bell.wav
-# urgent = C:\sounds\urgent.wav
+# don't repeat full paths). Relative paths are resolved against the repo root;
+# absolute paths work too.
+#
+# Formats: .wav always works (no extra software). mp3/opus/ogg/flac/m4a/... work
+# if ffmpeg (ffplay) or mpv is on PATH — otherwise non-wav falls back to a beep.
+# See the "Sounds" section in the README.
+# gentle = sounds/gentle.wav
+# bell   = sounds/bell.opus
+# urgent = C:\sounds\urgent.mp3
 
 [notifications]
 # Warn the kid as time runs low. Instead of a mandatory popup, play a sound at

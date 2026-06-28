@@ -11,6 +11,7 @@ import logging
 import subprocess
 import threading
 
+from . import audio
 from .base import PlatformOps
 
 logger = logging.getLogger("kidmon.platform.windows")
@@ -86,18 +87,30 @@ class WindowsOps(PlatformOps):
             logger.debug("process name lookup failed for pid %s: %s", pid, e)
             return None
 
-    def play_sound(self, wav_path=None):
+    def play_sound(self, path=None):
+        """Play a warning sound. .wav uses the stdlib (no dependency); other
+        formats (mp3, opus, ogg, …) need ffplay/mpv on PATH. Empty path beeps."""
         def _play():
-            try:
-                import winsound
-                if wav_path:
-                    winsound.PlaySound(
-                        wav_path,
-                        winsound.SND_FILENAME | winsound.SND_ASYNC)
-                else:
+            if not path:
+                try:
+                    import winsound
                     winsound.MessageBeep(winsound.MB_ICONEXCLAMATION)
-            except Exception as e:
-                logger.error("play_sound failed: %s", e)
+                except Exception as e:
+                    logger.error("play_sound (beep) failed: %s", e)
+                return
+            if path.lower().endswith(".wav"):
+                try:
+                    import winsound
+                    winsound.PlaySound(
+                        path, winsound.SND_FILENAME | winsound.SND_ASYNC)
+                    return
+                except Exception as e:
+                    logger.error("winsound failed for %s: %s", path, e)
+            # Non-wav (or winsound failed): try a general-purpose player.
+            if not audio.play_file(path):
+                logger.warning(
+                    "Could not play %s — install ffmpeg (ffplay) or mpv to use "
+                    "non-wav sounds, or point the config at a .wav file.", path)
 
         threading.Thread(target=_play, daemon=True).start()
 

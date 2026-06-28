@@ -12,7 +12,7 @@ The interface is deliberately tiny — five capabilities:
 * ``lock``                — lock the screen now.
 * ``foreground_app``      — (process_name, window_title) of the active window,
                             or None if it can't be determined.
-* ``play_sound`` / ``notify`` — best-effort notifications (a wav, a popup).
+* ``play_sound`` / ``notify`` — best-effort notifications (a sound, a popup).
 
 Notification methods must never raise: a failure to beep should not disturb
 enforcement. Backends log and swallow their own errors.
@@ -35,8 +35,12 @@ class PlatformOps:
         """Return (process_name, window_title) or None if unavailable."""
         raise NotImplementedError
 
-    def play_sound(self, wav_path=None):
-        """Play a wav file, or a default system sound when path is empty."""
+    def play_sound(self, path=None):
+        """Play a sound file, or a default system sound when path is empty.
+
+        ``.wav`` always works; other formats (mp3, opus, ogg, …) need a
+        general-purpose player (ffplay/mpv) on PATH — see ``audio.py``.
+        """
         raise NotImplementedError
 
     def notify(self, title, message):

@@ -23,7 +23,7 @@ History, activity and live state are stored in a local SQLite database on the ki
 - **Password-protected admin** — the kid status page is open; the controls require a parent login.
 - **Per-weekday daily limits** — e.g. 90 min on school days, 4 h on weekends, auto-applied each day.
 - **Scheduled bedtime locks** — lock automatically at set times.
-- **Sound warnings** — a different named `.wav` per minutes-remaining mark (e.g. `15:gentle, 5:urgent`), instead of a mandatory popup. Optional on-screen popup too.
+- **Sound warnings** — a different named sound per minutes-remaining mark (e.g. `15:gentle, 5:urgent`), instead of a mandatory popup. `.wav` works out of the box; `mp3`/`opus`/`ogg`/`flac`/… work too if `ffmpeg` or `mpv` is installed (see [Sounds](#sounds)). Optional on-screen popup too.
 - **Once-per-day save session** — after the first lock the kid gets one short window to log back in and save their work.
 - **Locked time doesn't count** — stepping away and locking the screen pauses the usage clock.
 - **Usage history + activity log** — SQLite-backed; see past days (with a tiny bar chart) and today's top programs on the admin page.
@@ -94,7 +94,7 @@ All settings live in an optional `config.ini` at the repo root (copy `config.ini
 | `[web]` | `username`, `password_hash` | Admin login. Set via `scripts/set_password.py`. |
 | `[limits]` | `default` | Daily allowance in minutes for any day not listed. |
 | `[limits]` | `monday`..`sunday` | Per-weekday allowance overrides. |
-| `[sounds]` | `name = path` | Name your `.wav` files once, then reference them by name in `notify`. |
+| `[sounds]` | `name = path` | Name your sound files once, then reference them by name in `notify`. Relative paths resolve against the repo root. See [Sounds](#sounds). |
 | `[notifications]` | `notify`, `sound_enabled`, `popup_enabled`, `sound_file`, `thresholds` | `notify = 15:gentle, 5:urgent, 1:urgent` maps each minutes-remaining mark to a named sound (the minutes are the alert thresholds). `sound_file` is the fallback; `thresholds` is the legacy single-sound form. |
 | `[monitoring]` | `monitored_users`, `exempt_users`, `grace_period_seconds` | Which OS accounts to restrict/exempt, and the save-session length. |
 | `[activity]` | `enabled`, `interval_seconds` | Foreground-program logging on/off and sample interval. |
@@ -102,6 +102,40 @@ All settings live in an optional `config.ini` at the repo root (copy `config.ini
 | `[chat]` | `enabled`, `kid_name` | Turn the parent⇄kid chat on/off and set the kid's display name (defaults to the OS username). |
 
 The parent can override the day's limit at runtime from the admin page; the configured per-weekday allowance auto-applies again the next day.
+
+### Sounds
+
+The agent plays a warning sound at each minutes-remaining mark. You configure sounds in two sections:
+
+```ini
+[sounds]
+# Name each sound file once (so you don't repeat full paths below).
+# Relative paths resolve against the repo root; absolute paths work too.
+gentle = sounds/gentle.wav
+bell   = sounds/bell.opus
+urgent = /home/kid/alerts/urgent.mp3
+
+[notifications]
+sound_enabled = true
+# Map each minutes-left mark to a sound name from [sounds]. The minutes listed
+# here ARE the alert thresholds — alert at 15, 5, 2 and 1 minutes left.
+notify = 15:gentle, 5:bell, 2:urgent, 1:urgent
+# Fallback sound for any mark whose name is missing/unknown (empty = system beep).
+sound_file = sounds/warning.wav
+```
+
+**Supported formats**
+
+- **`.wav` always works** on both Windows and Linux with nothing extra installed (Windows uses the built-in `winsound`; Linux uses `aplay`/`paplay`).
+- **`mp3`, `opus`, `ogg`, `flac`, `m4a`/`aac`, `wma`, …** work when a general-purpose player is on `PATH`. The agent looks for [`ffmpeg`](https://ffmpeg.org/)'s `ffplay` first, then [`mpv`](https://mpv.io/). Install either one to use compressed formats:
+  - **Windows:** `winget install Gyan.FFmpeg` (or `choco install ffmpeg`), then re-open the session so `PATH` updates.
+  - **Linux (Debian/Ubuntu):** `sudo apt install ffmpeg` — or `mpv`.
+
+If you reference a non-`.wav` sound but neither `ffplay` nor `mpv` is installed, the agent logs a warning and falls back to a system beep (Windows) or terminal bell (Linux); enforcement is unaffected. On Linux, `paplay` also covers `ogg`/`flac` even without ffmpeg.
+
+**Paths** — relative paths in `[sounds]` (and `sound_file`) are resolved against the repo root, so `gentle = sounds/gentle.wav` points at `<repo>/sounds/gentle.wav` regardless of where the agent is launched from. Absolute paths (e.g. `C:\sounds\urgent.opus` or `/home/kid/alerts/urgent.mp3`) are used as-is.
+
+**Legacy single-sound form** — instead of `notify`, you can set `thresholds = 15,5,2,1` to play the one `sound_file` at each of those marks. `notify` takes precedence when both are set.
 
 ## Project layout
 
@@ -117,7 +151,7 @@ kidmon/         # the package
   storage.py        # SQLite: state, daily history, activity, messages
   control.py        # the platform-agnostic enforcement engine
   platform/         # OS abstraction (lock / is_locked / foreground / sound)
-    base.py, windows.py, linux.py
+    base.py, windows.py, linux.py, audio.py  # audio.py: multi-format sound playback
   web/              # single Flask app: kid status (open) + admin (login)
 scripts/        # set_password.py, install_windows.py, install_linux.sh
 tests/          # unit tests for the pure logic, config and storage

@@ -8,7 +8,8 @@ gracefully (returns a safe default, never raises) when none are available:
                       ``xdg-screensaver`` / ``gnome-screensaver-command``.
 * foreground app    — ``xdotool`` to get the active window + its PID, then the
                       process name from ``/proc/<pid>/comm``. X11 only.
-* sound             — ``paplay`` then ``aplay``; ``notify-send`` for popups.
+* sound             — ``ffplay``/``mpv`` (any format) then ``paplay``/``aplay``
+                      (wav, plus ogg/flac via paplay); ``notify-send`` for popups.
 
 Wayland sessions don't expose the active window to ``xdotool``, so activity
 tracking may return None there; that's logged once and tolerated.
@@ -20,6 +21,7 @@ import shutil
 import subprocess
 import threading
 
+from . import audio
 from .base import PlatformOps
 
 logger = logging.getLogger("kidmon.platform.linux")
@@ -103,12 +105,21 @@ class LinuxOps(PlatformOps):
             except Exception:
                 return None
 
-    def play_sound(self, wav_path=None):
+    def play_sound(self, path=None):
+        """Play a warning sound. ffplay/mpv handle any format (opus, mp3, ogg,
+        flac, wav); paplay adds ogg/flac/wav; aplay is wav-only. Empty path or a
+        total failure falls back to a terminal bell."""
         def _play():
-            if wav_path:
+            if path:
+                # Broadest support first, then PulseAudio, then ALSA (wav-only).
+                if audio.play_file(path):
+                    return
                 for player in ("paplay", "aplay"):
-                    if _which(player) and _run([player, wav_path], timeout=30) is not None:
+                    if _which(player) and _run([player, path], timeout=30) is not None:
                         return
+                logger.warning(
+                    "Could not play %s — install ffmpeg (ffplay) or mpv to use "
+                    "non-wav sounds.", path)
             # No file (or playback failed): a terminal bell as a last resort.
             try:
                 print("\a", end="", flush=True)
