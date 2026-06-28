@@ -32,6 +32,24 @@ if [[ "${1:-}" == "--remove" ]]; then
   exit 0
 fi
 
+# The unit's ExecStart is baked from this interpreter, so verify it exists and
+# has the agent's dependencies before installing anything. Activate your
+# virtualenv before running this script to capture it (and its packages).
+if [[ -z "${PYTHON}" ]]; then
+  echo "ERROR: no python3 found on PATH." >&2
+  exit 1
+fi
+echo "Agent will run with: ${PYTHON}"
+if ! "${PYTHON}" -c "import flask, werkzeug" >/dev/null 2>&1; then
+  echo "ERROR: required packages (flask, werkzeug) are not installed for:" >&2
+  echo "  ${PYTHON}" >&2
+  echo >&2
+  echo "Install them for that interpreter first (activate your venv so it's the" >&2
+  echo "one captured), then re-run this installer:" >&2
+  echo "  ${PYTHON} -m pip install -r ${REPO_ROOT}/requirements.txt" >&2
+  exit 1
+fi
+
 mkdir -p "${UNIT_DIR}"
 # Bind the service to the graphical session: locking the screen needs DISPLAY /
 # XDG_SESSION_ID, which only exist inside the desktop session. (An earlier

@@ -13,6 +13,7 @@ After installing, set the parent password with:
 """
 import argparse
 import ctypes
+import importlib.util
 import os
 import subprocess
 import sys
@@ -25,6 +26,10 @@ TASK_NAME = "KidPCMonitor"
 FIREWALL_RULE = "Kid PC Monitor (web)"
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 AGENT = os.path.join(REPO_ROOT, "agent.py")
+REQUIREMENTS = os.path.join(REPO_ROOT, "requirements.txt")
+
+# Packages the agent needs at runtime (psutil is optional, so not checked).
+REQUIRED_MODULES = ["flask", "werkzeug"]
 
 
 def is_admin():
@@ -94,6 +99,26 @@ def open_firewall(port):
         print("Could not add firewall rule:\n" + (result.stderr or result.stdout))
 
 
+def check_dependencies():
+    """Confirm the agent's deps are importable in THIS interpreter.
+
+    The scheduled task runs the very interpreter that runs this installer (its
+    pythonw.exe), so checking imports in-process tells us exactly whether the
+    agent will start at logon. Fail loudly now instead of silently later.
+    """
+    missing = [m for m in REQUIRED_MODULES if importlib.util.find_spec(m) is None]
+    if not missing:
+        return True
+    print("\nERROR: required packages are not installed for the interpreter the")
+    print("agent would run with:")
+    print(f"  {sys.executable}")
+    print(f"  missing: {', '.join(missing)}")
+    print("\nInstall the requirements into THIS interpreter, then re-run the")
+    print("installer with the same one (e.g. your virtualenv's python):")
+    print(f'  "{sys.executable}" -m pip install -r "{REQUIREMENTS}"')
+    return False
+
+
 def remove():
     subprocess.run(f'schtasks /delete /tn "{TASK_NAME}" /f', shell=True)
     subprocess.run(f'netsh advfirewall firewall delete rule name="{FIREWALL_RULE}"',
@@ -113,6 +138,12 @@ def main():
     if args.remove:
         remove()
         return
+
+    # Show the interpreter that will be baked into the task, and verify it has
+    # the agent's dependencies before registering anything.
+    print(f"Agent will run with: {pythonw_path()}")
+    if not check_dependencies():
+        sys.exit(1)
 
     if create_task():
         open_firewall(config.get_web_port())
