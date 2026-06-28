@@ -26,6 +26,9 @@ username = parent
 # allowance auto-applies each day and the usage clock resets; the parent can
 # still override it for the current day from the admin page.
 default = 120
+# How long a scheduled lock holds the screen, in minutes. A bedtime lock should
+# stay locked overnight, not just for its triggering minute. Default: 600 (10h).
+# lock_duration_minutes = 600
 # monday    = 90
 # tuesday   = 90
 # wednesday = 90

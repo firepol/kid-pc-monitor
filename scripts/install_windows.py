@@ -43,17 +43,43 @@ def pythonw_path():
 
 def create_task():
     py = pythonw_path()
-    # Start at logon for the current user; run whether on battery or not.
+    # Start at logon for the current user. The program/args must be wrapped in
+    # *double* quotes (Windows ignores single quotes), escaped as \" so they
+    # survive the outer /tr "..." — otherwise a path with spaces (e.g. under
+    # "Program Files") fails and the agent never launches.
     cmd = (
         f'schtasks /create /tn "{TASK_NAME}" /sc onlogon /rl highest /f '
-        f'/tr "\'{py}\' \'{AGENT}\'"'
+        f'/tr "\\"{py}\\" \\"{AGENT}\\""'
     )
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if result.returncode != 0:
+        print("Failed to create task:\n" + (result.stderr or result.stdout))
+        return False
+    print(f"Scheduled task '{TASK_NAME}' created (runs at logon).")
+    _allow_on_battery()
+    return True
+
+
+def _allow_on_battery():
+    """Let the task start and keep running on battery.
+
+    schtasks /create can't set battery options, so Task Scheduler applies its
+    defaults (don't start on battery / stop when going on battery) — which would
+    leave a laptop unmonitored whenever it's unplugged. Clear them via PowerShell.
+    """
+    ps = (
+        "$s = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries "
+        "-DontStopIfGoingOnBatteries; "
+        f"Set-ScheduledTask -TaskName '{TASK_NAME}' -Settings $s | Out-Null"
+    )
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
+        capture_output=True, text=True)
     if result.returncode == 0:
-        print(f"Scheduled task '{TASK_NAME}' created (runs at logon).")
-        return True
-    print("Failed to create task:\n" + (result.stderr or result.stdout))
-    return False
+        print("Task set to run on battery too.")
+    else:
+        print("Warning: could not clear battery limits "
+              "(task may not run on battery):\n" + (result.stderr or result.stdout))
 
 
 def open_firewall(port):

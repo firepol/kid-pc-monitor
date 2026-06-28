@@ -17,9 +17,10 @@ all access is serialised behind one lock. SQLite with ``check_same_thread`` off
 plus our own lock is sufficient for this low write rate.
 """
 import json
+import os
 import sqlite3
 import threading
-from datetime import date
+from datetime import date, timedelta
 
 
 _SCHEMA = """
@@ -55,10 +56,21 @@ CREATE TABLE IF NOT EXISTS messages (
 # database can't grow without bound over a long deployment.
 _MESSAGE_RETENTION = 1000
 
+# Drop activity rows older than this. The sampler inserts thousands of rows a
+# day, so without pruning the table (and the queries that scan it) grow without
+# bound; the admin history only looks back ~30 days.
+_ACTIVITY_RETENTION_DAYS = 90
+
 
 class Storage:
     def __init__(self, db_path):
         self.db_path = db_path
+        # Create the parent directory if the configured db_path points into a
+        # not-yet-existing subdirectory, so sqlite3.connect can't fail with
+        # "unable to open database file" and abort the agent at startup.
+        parent = os.path.dirname(db_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
@@ -112,11 +124,15 @@ class Storage:
     def record_daily_usage(self, day, used_seconds, limit_minutes):
         """Upsert the usage row for a day (ISO date string)."""
         with self._lock:
+            # COALESCE keeps a day's recorded limit when a later upsert passes
+            # NULL (e.g. the parent cleared the limit), so the history chart's
+            # limit mark for that day isn't wiped.
             self._conn.execute(
                 "INSERT INTO daily_usage(day, used_seconds, limit_minutes) "
                 "VALUES(?, ?, ?) ON CONFLICT(day) DO UPDATE SET "
                 "used_seconds = excluded.used_seconds, "
-                "limit_minutes = excluded.limit_minutes",
+                "limit_minutes = COALESCE(excluded.limit_minutes, "
+                "daily_usage.limit_minutes)",
                 (day, used_seconds, limit_minutes))
             self._conn.commit()
 
@@ -132,10 +148,15 @@ class Storage:
 
     def log_activity(self, ts, process, title, seconds):
         day = ts[:10]  # ISO datetime -> ISO date
+        cutoff = (date.fromisoformat(day)
+                  - timedelta(days=_ACTIVITY_RETENTION_DAYS)).isoformat()
         with self._lock:
             self._conn.execute(
                 "INSERT INTO activity(ts, day, process, title, seconds) "
                 "VALUES(?, ?, ?, ?, ?)", (ts, day, process, title, seconds))
+            # Prune stale rows. Cheap via idx_activity_day: typically matches
+            # nothing, deleting a chunk only on the first sample of a new day.
+            self._conn.execute("DELETE FROM activity WHERE day < ?", (cutoff,))
             self._conn.commit()
 
     def get_activity_summary(self, day=None, limit=20):

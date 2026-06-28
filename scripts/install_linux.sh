@@ -33,10 +33,16 @@ if [[ "${1:-}" == "--remove" ]]; then
 fi
 
 mkdir -p "${UNIT_DIR}"
+# Bind the service to the graphical session: locking the screen needs DISPLAY /
+# XDG_SESSION_ID, which only exist inside the desktop session. (An earlier
+# version lingered the user manager so it ran at boot — but that starts before
+# any graphical login, with no DISPLAY, so lock() silently no-ops. We do NOT
+# enable linger here for exactly that reason.)
 cat > "${UNIT_PATH}" <<EOF
 [Unit]
 Description=Kid PC Monitor agent
 After=graphical-session.target
+PartOf=graphical-session.target
 
 [Service]
 Type=simple
@@ -46,18 +52,11 @@ Restart=on-failure
 RestartSec=5
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target
 EOF
 
 systemctl --user daemon-reload
 systemctl --user enable --now "${SERVICE_NAME}"
-
-# Let the service keep running after logout / across reboots without an active
-# session (best effort; needs sudo and may be a no-op on some distros).
-if command -v loginctl >/dev/null 2>&1; then
-  loginctl enable-linger "$(whoami)" 2>/dev/null || \
-    echo "(could not enable linger; run 'sudo loginctl enable-linger $(whoami)' if you want it to run without an active session)"
-fi
 
 echo "Installed and started ${SERVICE_NAME}."
 echo "Set the parent password with: python3 scripts/set_password.py"

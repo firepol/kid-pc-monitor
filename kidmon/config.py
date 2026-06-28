@@ -48,6 +48,10 @@ DEFAULTS = {
         # Daily allowance in minutes. Per-weekday keys override "default".
         "default": 120,
         # monday..sunday: unset => fall back to default.
+        # How long a scheduled lock holds the screen (minutes). A bedtime lock
+        # should keep the PC locked overnight, not just for its triggering
+        # minute. Default 600 (10h). 0 = legacy single-minute behaviour.
+        "lock_duration_minutes": 600,
     },
     "notifications": {
         "sound_enabled": True,
@@ -79,7 +83,10 @@ _FALSE_VALUES = {"0", "false", "no", "off"}
 
 
 def _parser():
-    parser = configparser.ConfigParser()
+    # interpolation=None: values are free-form strings (sound paths, password
+    # hashes, names) that may legitimately contain '%' (e.g. %USERPROFILE%);
+    # the default BasicInterpolation would raise on those.
+    parser = configparser.ConfigParser(interpolation=None)
     parser.read(CONFIG_PATH)  # silently ignores a missing file
     return parser
 
@@ -158,6 +165,12 @@ def get_admin_credentials():
 
 def get_default_limit():
     return _get_int("limits", "default", DEFAULTS["limits"]["default"])
+
+
+def get_lock_duration():
+    """Minutes a scheduled lock keeps the screen locked (0 = its minute only)."""
+    return _get_int("limits", "lock_duration_minutes",
+                    DEFAULTS["limits"]["lock_duration_minutes"])
 
 
 def get_weekday_limits():

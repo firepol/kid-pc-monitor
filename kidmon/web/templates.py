@@ -336,7 +336,8 @@ async function post(url, body) {
   return data;
 }
 function fmt(mins){ if(mins==null) return "—"; if(mins>=60){const h=Math.floor(mins/60),m=mins%60;return h+"h "+String(m).padStart(2,"0")+"m";} return mins+" min"; }
-function setLimit(preset){ const v = preset || parseInt(document.getElementById("limit").value); if(!v){flash("Enter minutes",false);return;} post("/api/admin/set_limit",{minutes:v}); }
+function esc(s){ return (s||"").replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]; }); }
+function setLimit(preset){ const v = preset || parseInt(document.getElementById("limit").value); if(!v||v<0){flash("Enter minutes (0 or more)",false);return;} post("/api/admin/set_limit",{minutes:v}); }
 function extend(){ const v=parseInt(document.getElementById("limit").value); if(!v){flash("Enter minutes",false);return;} post("/api/admin/extend",{minutes:v}); }
 function addLock(){ const t=document.getElementById("locktime").value; if(!t){flash("Pick a time",false);return;} post("/api/admin/add_lock_time",{time:t}); }
 function clearWhat(what){ if(confirm("Clear "+what+"?")) post("/api/admin/clear",{what:what}); }
@@ -363,7 +364,7 @@ async function refresh(){
     : "<span class='muted'>No history yet</span>";
   const act = await (await fetch("/api/admin/activity",{cache:"no-store"})).json();
   document.getElementById("activity").innerHTML = "<tbody>" + (act.rows.length
-    ? act.rows.map(r=>"<tr><td>"+(r.process||"?")+"</td><td>"+fmt(Math.round(r.total/60))+"</td></tr>").join("")
+    ? act.rows.map(r=>"<tr><td>"+esc(r.process||"?")+"</td><td>"+fmt(Math.round(r.total/60))+"</td></tr>").join("")
     : "<tr><td class='muted'>No activity logged yet</td></tr>") + "</tbody>";
 }
 refresh();

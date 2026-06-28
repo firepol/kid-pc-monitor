@@ -57,6 +57,17 @@ def test_daily_usage_upsert_and_history():
     tmp.cleanup()
 
 
+def test_daily_usage_null_limit_keeps_prior_limit():
+    s, tmp = _store()
+    s.record_daily_usage("2026-06-27", 3600, 120)
+    s.record_daily_usage("2026-06-27", 5400, None)  # parent cleared the limit
+    hist = s.get_history()
+    check("used updated", hist[0]["used_seconds"], 5400)
+    check("limit mark preserved", hist[0]["limit_minutes"], 120)
+    s.close()
+    tmp.cleanup()
+
+
 def test_activity_summary_groups_by_process():
     s, tmp = _store()
     s.log_activity("2026-06-27T10:00:00", "chrome.exe", "YouTube", 15)
@@ -107,6 +118,7 @@ def main():
         test_state_roundtrip_and_default,
         test_state_many_atomic,
         test_daily_usage_upsert_and_history,
+        test_daily_usage_null_limit_keeps_prior_limit,
         test_activity_summary_groups_by_process,
         test_messages_roundtrip_chronological_with_names,
         test_messages_pruned_to_retention,

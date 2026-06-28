@@ -15,7 +15,7 @@ once-per-day save session, crossing-based countdown warnings) but:
 * a background sampler logs the foreground program for the activity history.
 
 The Flask app (``kidmon.web``) calls the public ``set_*``/``clear_*``/``lock_now``
-/``status``/``send_message`` methods; the monitor and activity threads run the
+/``status``/``post_chat`` methods; the monitor and activity threads run the
 enforcement and sampling loops.
 """
 import logging
@@ -30,7 +30,7 @@ from .warning_logic import (
 from .grace_logic import (
     decide_grace_action, RESET, NONE, LOCK_NOW, GRANT_SESSION, RELOCK,
 )
-from .schedule_logic import limit_for_weekday
+from .schedule_logic import limit_for_weekday, scheduled_lock_active
 from .notification_logic import select_sound
 
 logger = logging.getLogger("kidmon.control")
@@ -59,6 +59,9 @@ class TimeControl:
         self.sound_by_minute = self.notif["sound_by_minute"]
         self.default_sound = self.notif["default_sound"]
 
+        # How long a scheduled (bedtime) lock keeps the screen locked.
+        self.lock_duration_minutes = config.get_lock_duration()
+
         self.activity = config.get_activity_settings()
 
         self.current_user = platform.current_user()
@@ -82,6 +85,13 @@ class TimeControl:
         self.is_locked = False
         self.warnings_sent = set()
         self.last_remaining = None
+
+        # Usage already counted toward today's history before the current clock
+        # episode. Lets the daily-usage history keep the morning's time when the
+        # enforcement clock is reset mid-day (e.g. a parent re-sets the limit),
+        # instead of dropping today's total back toward zero.
+        self._history_day = datetime.now().date()
+        self._history_banked_seconds = 0.0
 
         # Once-per-day post-lock save session.
         self.over_limit_locked = False
@@ -142,6 +152,12 @@ class TimeControl:
                 if d >= today:
                     self.grace_used_date = d
 
+            history_day = s.get_state("history_day")
+            if history_day and datetime.fromisoformat(history_day).date() == today:
+                self._history_day = today
+                self._history_banked_seconds = s.get_state(
+                    "history_banked_seconds") or 0.0
+
             logger.info("State loaded: %d lock times, usage limit: %s",
                         len(self.lock_times), self.usage_limit)
         except Exception as e:
@@ -157,6 +173,8 @@ class TimeControl:
                 "locked_accumulated": self.locked_accumulated.total_seconds(),
                 "grace_used_date": (self.grace_used_date.isoformat()
                                     if self.grace_used_date else None),
+                "history_day": self._history_day.isoformat(),
+                "history_banked_seconds": self._history_banked_seconds,
             })
         except Exception as e:
             logger.error("Error saving state: %s", e)
@@ -184,6 +202,9 @@ class TimeControl:
             self.grace_used_date = None
             self.over_limit_locked = False
             self.grace_deadline = None
+            # New day: today's history starts fresh.
+            self._history_day = today
+            self._history_banked_seconds = 0.0
         logger.info("Applied daily limit for %s: %s minutes",
                     today, self.usage_limit)
         self.save_state()
@@ -194,6 +215,21 @@ class TimeControl:
         self.locked_accumulated = timedelta(0)
         if self.lock_started_at is not None:
             self.lock_started_at = self.start_time
+
+    def _bank_history_usage(self):
+        """Move the current clock episode's usage into today's history bank.
+
+        Call (while holding state_lock) just before resetting the enforcement
+        clock mid-day, so the daily-usage history keeps counting time already
+        spent today instead of restarting from zero. Call before reset_usage_clock.
+        """
+        today = datetime.now().date()
+        if self._history_day != today:
+            self._history_day = today
+            self._history_banked_seconds = 0.0
+        used = usage_minutes(datetime.now(), self.start_time,
+                             self.locked_accumulated, self.lock_started_at)
+        self._history_banked_seconds += used * 60
 
     # --- live screen-lock tracking ------------------------------------------
 
@@ -213,6 +249,9 @@ class TimeControl:
                     self.is_locked = False
                     logger.info("PC unlocked (detected)")
                 elif not self.is_locked and actual_locked:
+                    # Reconcile with the real screen state so status() reflects a
+                    # kid-initiated (Win+L) or OS idle lock, not just our locks.
+                    self.is_locked = True
                     logger.info("PC locked (detected)")
             except Exception as e:
                 logger.error("lock-state monitor error: %s", e)
@@ -231,9 +270,12 @@ class TimeControl:
         ``sound_path`` is the resolved wav for this specific alert; when None the
         configured default sound (or a system beep) is used.
         """
-        if self.notif["sound_enabled"]:
+        sound_enabled = self.notif["sound_enabled"]
+        if sound_enabled:
             self.platform.play_sound(sound_path or self.default_sound)
-        if self.notif["popup_enabled"]:
+        # Show a popup when explicitly enabled, or as a fallback when sound is
+        # off — so a warning is never dropped on every channel at once.
+        if self.notif["popup_enabled"] or not sound_enabled:
             self.platform.notify("Computer time", message)
         logger.info("Alert: %s", message)
 
@@ -245,6 +287,9 @@ class TimeControl:
         with self.state_lock:
             self.usage_limit = minutes
             self.limit_day = datetime.now().date()
+            # Preserve today's already-used time in the history before the
+            # clock restart zeroes it.
+            self._bank_history_usage()
             self.reset_usage_clock()
             self.warnings_sent.clear()
             self.last_remaining = None
@@ -283,11 +328,6 @@ class TimeControl:
             self.warnings_sent.clear()
             self.last_remaining = None
         self.save_state()
-
-    def send_message(self, body, sender="parent"):
-        """Admin quick-popup: show a message on the kid's screen and store it."""
-        self.platform.notify("Message from parent", body)
-        self.storage.add_message(datetime.now().isoformat(), sender, body, "Parent")
 
     def post_chat(self, body, is_parent, parent_name=None):
         """Post a chat message. Role is decided by the caller from the session.
@@ -353,6 +393,13 @@ class TimeControl:
         previous = self.last_remaining
         self.last_remaining = remaining
 
+        # The countdown target moved further away (the previous lock passed, so
+        # we're now counting down to a later one): start the thresholds fresh so
+        # the next lock gets its own warnings instead of being silenced by the
+        # already-sent set from the earlier lock.
+        if previous is not None and remaining > previous + 0.5:
+            self.warnings_sent.clear()
+
         notice = initial_remaining_notice(previous, remaining, self.warning_intervals)
         if notice is not None:
             sound = select_sound(notice, self.warning_intervals,
@@ -379,9 +426,8 @@ class TimeControl:
             locked_accumulated = self.locked_accumulated
             lock_started_at = self.lock_started_at
 
-        for lt in lock_times:
-            if now.hour == lt.hour and now.minute == lt.minute:
-                return True, "Scheduled lock time reached"
+        if scheduled_lock_active(now, lock_times, self.lock_duration_minutes):
+            return True, "Scheduled lock time reached"
 
         if usage_limit is not None:
             used = usage_minutes(now, start_time, locked_accumulated, lock_started_at)
@@ -450,12 +496,17 @@ class TimeControl:
             time.sleep(1)
 
     def _record_history(self):
+        today = datetime.now().date()
         with self.state_lock:
             usage_limit = self.usage_limit
+            if self._history_day != today:
+                # Day rolled over between ticks; banked usage was the old day's.
+                self._history_day = today
+                self._history_banked_seconds = 0.0
             used = usage_minutes(datetime.now(), self.start_time,
                                  self.locked_accumulated, self.lock_started_at)
-        self.storage.record_daily_usage(
-            datetime.now().date().isoformat(), used * 60, usage_limit)
+            total_seconds = self._history_banked_seconds + used * 60
+        self.storage.record_daily_usage(today.isoformat(), total_seconds, usage_limit)
 
     def run_activity_sampler(self):
         """Log the foreground program at a fixed interval for the history."""

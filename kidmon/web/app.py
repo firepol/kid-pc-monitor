@@ -136,6 +136,10 @@ def create_app(control, config, storage):
             minutes = int(request.json["minutes"])
         except (KeyError, TypeError, ValueError):
             return jsonify(ok=False, message="Invalid minutes"), 400
+        if minutes < 0:
+            # A negative limit would make get_time_remaining clamp to 0 and lock
+            # the PC instantly ("Time's up") with no time actually used.
+            return jsonify(ok=False, message="Minutes must be 0 or more"), 400
         control.set_usage_limit(minutes)
         return jsonify(ok=True, message=f"Limit set to {minutes} minutes")
 
@@ -181,7 +185,11 @@ def create_app(control, config, storage):
         body = (request.json or {}).get("message", "").strip()
         if not body:
             return jsonify(ok=False, message="Empty message"), 400
-        control.send_message(body)
+        # Route through the chat store (not just an OS popup): the message is
+        # persisted and shows in the kid's chat thread even if notify-send /
+        # the OS notifier is missing, so it isn't silently dropped.
+        parent_name = request.cookies.get(PARENT_NAME_COOKIE, "Parent")
+        control.post_chat(body, is_parent=True, parent_name=parent_name)
         return jsonify(ok=True, message="Message sent")
 
     @app.get("/api/admin/history")
