@@ -218,7 +218,7 @@ LOGIN_PAGE = """<!DOCTYPE html>
     <input name="password" type="password" placeholder="Password" autofocus
            autocomplete="current-password" required>
     <input name="name" placeholder="Your name for chat (e.g. Mom) — optional"
-           autocomplete="name">
+           autocomplete="name" value="{{ parent_name or '' }}">
     <button type="submit">Log in</button>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
     {% if not configured %}<div class="note">No admin password is configured yet.
@@ -270,6 +270,8 @@ ADMIN_PAGE = """<!DOCTYPE html>
     {% if s.is_locked %}🔒 Currently LOCKED{% else %}● Online{% endif %}
     · <a href="/">💬 messages</a> · <a href="/logout">log out</a>
   </div>
+  <div class="top">Chatting as <b id="pname">Parent</b>
+    · <a href="#" id="editname">change name</a></div>
   <div id="msg"></div>
 
   <div class="group">
@@ -326,6 +328,18 @@ ADMIN_PAGE = """<!DOCTYPE html>
   </div>
 </div>
 <script>
+// --- parent chat display name (shared cookie with the status-page chat) ---
+var NAME_COOKIE = "kidmon_parent_name";
+function getCookie(n){ var m=document.cookie.match("(^|;)\\s*"+n+"\\s*=\\s*([^;]+)"); return m?decodeURIComponent(m.pop()):null; }
+function setCookie(n,v){ document.cookie=n+"="+encodeURIComponent(v)+";path=/;max-age=31536000;samesite=lax"; }
+function showName(){ document.getElementById("pname").textContent = getCookie(NAME_COOKIE) || "Parent"; }
+document.getElementById("editname").addEventListener("click", function(e){
+  e.preventDefault();
+  var name = prompt("Your name (shown to your kid in chat):", getCookie(NAME_COOKIE) || "Parent");
+  if(name && name.trim()){ setCookie(NAME_COOKIE, name.trim().slice(0,40)); showName(); flash("Chat name set to " + name.trim().slice(0,40), true); }
+});
+showName();
+
 function flash(text, ok) {
   const m = document.getElementById("msg");
   m.textContent = text; m.className = ok ? "s" : "e"; m.style.display = "block";

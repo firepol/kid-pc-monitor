@@ -102,11 +102,13 @@ def create_app(control, config, storage):
     def login():
         _, password_hash = config.get_admin_credentials()
         configured = bool(password_hash)
+        # Remember a previously-chosen chat name so it pre-fills the form.
+        saved_name = request.cookies.get(PARENT_NAME_COOKIE, "")
         if request.method == "POST":
             pw = request.form.get("password", "")
             if not configured:
                 return render_template_string(
-                    LOGIN_PAGE, configured=False,
+                    LOGIN_PAGE, configured=False, parent_name=saved_name,
                     error="No admin password configured.")
             # One shared password for all parents — no username. Each parent
             # picks a display name (for chat) at login; it's not a credential.
@@ -119,8 +121,10 @@ def create_app(control, config, storage):
                                     max_age=60 * 60 * 24 * 365, samesite="Lax")
                 return resp
             return render_template_string(
-                LOGIN_PAGE, configured=True, error="Wrong password.")
-        return render_template_string(LOGIN_PAGE, configured=configured, error=None)
+                LOGIN_PAGE, configured=True, parent_name=saved_name,
+                error="Wrong password.")
+        return render_template_string(LOGIN_PAGE, configured=configured,
+                                      parent_name=saved_name, error=None)
 
     @app.get("/logout")
     def logout():
